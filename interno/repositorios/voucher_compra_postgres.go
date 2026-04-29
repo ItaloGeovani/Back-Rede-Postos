@@ -299,7 +299,7 @@ SELECT
   COALESCE(TRIM(u.nome_completo), ''),
   COALESCE(TRIM(u.email), ''),
   c.base_desconto,
-  COALESCE(NULLIF(TRIM(c.titulo_exibicao), ''), NULLIF(TRIM(c.titulo), ''), NULLIF(TRIM(c.nome), ''))
+  COALESCE(NULLIF(TRIM(c.titulo), ''), NULLIF(TRIM(c.nome), ''))
 FROM voucher_compras v
 INNER JOIN usuarios u ON u.id = v.usuario_id AND u.rede_id = v.rede_id
 LEFT JOIN campanhas c ON c.id = v.campanha_id AND c.rede_id = v.rede_id
@@ -431,7 +431,7 @@ SELECT
   COALESCE(TRIM(u.nome_completo), ''),
   p.nome,
   c.base_desconto,
-  COALESCE(NULLIF(TRIM(c.titulo_exibicao), ''), NULLIF(TRIM(c.titulo), ''), NULLIF(TRIM(c.nome), ''))
+  COALESCE(NULLIF(TRIM(c.titulo), ''), NULLIF(TRIM(c.nome), ''))
 FROM voucher_compras v
 INNER JOIN usuarios u ON u.id = v.usuario_id AND u.rede_id = v.rede_id
 LEFT JOIN postos p ON p.id = v.posto_id_uso AND p.rede_id = v.rede_id
