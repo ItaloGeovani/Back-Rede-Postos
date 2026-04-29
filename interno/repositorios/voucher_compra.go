@@ -2,12 +2,28 @@ package repositorios
 
 import (
 	"errors"
+	"strings"
 	"time"
 
 	"gaspass-servidor/interno/modelos"
 )
 
 var ErrVoucherCompraNaoEncontrado = errors.New("voucher compra nao encontrado")
+
+// TipoCompraVoucher como o frentista deve honrar o resgate no posto (litros, valor em R$, ou unidade de campanha).
+func TipoCompraVoucher(litros *float64, campanhaBaseDesconto string) string {
+	if litros != nil && *litros > 1e-9 {
+		return "LITRO"
+	}
+	switch strings.TrimSpace(campanhaBaseDesconto) {
+	case modelos.BaseDescontoLitro:
+		return "LITRO"
+	case modelos.BaseDescontoUnidade:
+		return "UNIDADE"
+	default:
+		return "VALOR"
+	}
+}
 
 // VoucherCompraRegistro linha de voucher_compras.
 type VoucherCompraRegistro struct {
@@ -34,6 +50,8 @@ type VoucherCompraConsultaEquipe struct {
 	VoucherCompraRegistro
 	ClienteNomeCompleto string `json:"cliente_nome_completo"`
 	ClienteEmail        string `json:"cliente_email,omitempty"`
+	TipoCompra          string `json:"tipo_compra"`               // LITRO | VALOR | UNIDADE
+	CampanhaTitulo      string `json:"campanha_titulo,omitempty"` // nome amigável da campanha, se houver
 }
 
 // VoucherCompraPainelLinha voucher + cliente e posto de uso (listagem no painel da rede).
@@ -54,6 +72,8 @@ type VoucherCompraPainelLinha struct {
 	AtualizadoEm        time.Time  `json:"atualizado_em"`
 	ClienteNomeCompleto string     `json:"cliente_nome_completo"`
 	PostoUsoNome        string     `json:"posto_uso_nome,omitempty"`
+	TipoCompra          string     `json:"tipo_compra"`
+	CampanhaTitulo      string     `json:"campanha_titulo,omitempty"`
 }
 
 // VoucherCompraRepositorio persistência de compras de voucher no app.

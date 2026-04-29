@@ -110,15 +110,17 @@ func scanVcr(s scannerVcr, x *VoucherCompraRegistro) error {
 	return nil
 }
 
-func scanVcrEquipe(s scannerVcr, x *VoucherCompraRegistro, clienteNome, clienteEmail *string) error {
+func scanVcrEquipe(s scannerVcr, x *VoucherCompraRegistro, clienteNome, clienteEmail *string, campanhaBaseDesconto, campanhaTitulo *string) error {
 	var camp, ref, cod sql.NullString
 	var mpID sql.NullInt64
 	var litros sql.NullFloat64
 	var exPag, exRes sql.NullTime
+	var cbCamp, cbTit sql.NullString
 	err := s.Scan(
 		&x.ID, &x.RedeID, &x.UsuarioID, &camp, &x.ValorSolicitado, &x.DescontoAplicado, &x.ValorFinal, &litros, &x.Status,
 		&mpID, &ref, &cod, &exPag, &exRes, &x.CriadoEm, &x.AtualizadoEm,
 		clienteNome, clienteEmail,
+		&cbCamp, &cbTit,
 	)
 	if err != nil {
 		return err
@@ -150,6 +152,20 @@ func scanVcrEquipe(s scannerVcr, x *VoucherCompraRegistro, clienteNome, clienteE
 	if exRes.Valid {
 		t := exRes.Time
 		x.ExpiraResgate = &t
+	}
+	if campanhaBaseDesconto != nil {
+		if cbCamp.Valid {
+			*campanhaBaseDesconto = strings.TrimSpace(cbCamp.String)
+		} else {
+			*campanhaBaseDesconto = ""
+		}
+	}
+	if campanhaTitulo != nil {
+		if cbTit.Valid {
+			*campanhaTitulo = strings.TrimSpace(cbTit.String)
+		} else {
+			*campanhaTitulo = ""
+		}
 	}
 	return nil
 }
@@ -281,16 +297,20 @@ SELECT
   v.valor_solicitado, v.desconto_aplicado, v.valor_final, v.litros::float8, v.status::text,
   v.mp_payment_id, v.referencia_pagamento, v.codigo_resgate, v.expira_pagamento_em, v.expira_resgate_em, v.criado_em, v.atualizado_em,
   COALESCE(TRIM(u.nome_completo), ''),
-  COALESCE(TRIM(u.email), '')
+  COALESCE(TRIM(u.email), ''),
+  c.base_desconto,
+  COALESCE(NULLIF(TRIM(c.titulo_exibicao), ''), NULLIF(TRIM(c.titulo), ''), NULLIF(TRIM(c.nome), ''))
 FROM voucher_compras v
 INNER JOIN usuarios u ON u.id = v.usuario_id AND u.rede_id = v.rede_id
+LEFT JOIN campanhas c ON c.id = v.campanha_id AND c.rede_id = v.rede_id
 WHERE v.rede_id = $1::uuid
   AND v.codigo_resgate IS NOT NULL
   AND upper(trim(v.codigo_resgate)) = upper(trim($2))
 LIMIT 1`
 	var out VoucherCompraConsultaEquipe
 	var nome, email string
-	err := scanVcrEquipe(r.db.QueryRowContext(ctx, q, redeID, codigo), &out.VoucherCompraRegistro, &nome, &email)
+	var baseCamp, titCamp string
+	err := scanVcrEquipe(r.db.QueryRowContext(ctx, q, redeID, codigo), &out.VoucherCompraRegistro, &nome, &email, &baseCamp, &titCamp)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return nil, ErrVoucherCompraNaoEncontrado
@@ -299,6 +319,8 @@ LIMIT 1`
 	}
 	out.ClienteNomeCompleto = nome
 	out.ClienteEmail = email
+	out.CampanhaTitulo = titCamp
+	out.TipoCompra = TipoCompraVoucher(out.Litros, baseCamp)
 	return &out, nil
 }
 
@@ -329,19 +351,29 @@ func scanVoucherPainelLinha(s scannerVcr, x *VoucherCompraPainelLinha) error {
 	var litros sql.NullFloat64
 	var exPag, exRes, usado sql.NullTime
 	var postoNome sql.NullString
+	var cbCamp, cbTit sql.NullString
 	err := s.Scan(
 		&x.ID, &x.UsuarioID, &camp,
 		&x.ValorSolicitado, &x.DescontoAplicado, &x.ValorFinal, &litros, &x.Status,
 		&cod, &exPag, &exRes, &usado, &x.CriadoEm, &x.AtualizadoEm,
 		&x.ClienteNomeCompleto, &postoNome,
+		&cbCamp, &cbTit,
 	)
 	if err != nil {
 		return err
+	}
+	baseCamp := ""
+	if cbCamp.Valid {
+		baseCamp = strings.TrimSpace(cbCamp.String)
+	}
+	if cbTit.Valid {
+		x.CampanhaTitulo = strings.TrimSpace(cbTit.String)
 	}
 	if litros.Valid {
 		v := litros.Float64
 		x.Litros = &v
 	}
+	x.TipoCompra = TipoCompraVoucher(x.Litros, baseCamp)
 	if camp.Valid && strings.TrimSpace(camp.String) != "" {
 		v := camp.String
 		x.CampanhaID = &v
@@ -397,10 +429,13 @@ SELECT
   v.valor_solicitado, v.desconto_aplicado, v.valor_final, v.litros::float8, v.status::text,
   v.codigo_resgate, v.expira_pagamento_em, v.expira_resgate_em, v.usado_em, v.criado_em, v.atualizado_em,
   COALESCE(TRIM(u.nome_completo), ''),
-  p.nome
+  p.nome,
+  c.base_desconto,
+  COALESCE(NULLIF(TRIM(c.titulo_exibicao), ''), NULLIF(TRIM(c.titulo), ''), NULLIF(TRIM(c.nome), ''))
 FROM voucher_compras v
 INNER JOIN usuarios u ON u.id = v.usuario_id AND u.rede_id = v.rede_id
 LEFT JOIN postos p ON p.id = v.posto_id_uso AND p.rede_id = v.rede_id
+LEFT JOIN campanhas c ON c.id = v.campanha_id AND c.rede_id = v.rede_id
 WHERE v.rede_id = $1::uuid
   AND ($2 = '' OR v.status::text = $2)
 ORDER BY v.criado_em DESC
