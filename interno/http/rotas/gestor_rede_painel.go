@@ -42,6 +42,7 @@ func RegistrarGestorRedePainel(muxPrincipal *http.ServeMux, h *handlers.Handlers
 	mux.Handle("/v1/gestor-rede/dev/combustiveis/excluir", http.HandlerFunc(h.ExcluirCombustivelRede))
 	mux.Handle("/v1/gestor-rede/dev/push/fcm/rede/teste", http.HandlerFunc(h.PostFcmTesteRedePainel))
 	mux.Handle("/v1/gestor-rede/dev/vouchers/consultar", http.HandlerFunc(h.GetVoucherConsultaPorCodigoEquipe))
+	mux.Handle("/v1/gestor-rede/dev/vouchers/baixar", http.HandlerFunc(h.PostVoucherBaixaEquipe))
 	mux.Handle("/v1/gestor-rede/dev/vouchers/listar", http.HandlerFunc(h.GetVouchersComprasPainelEquipe))
 
 	chain := append([]middlewares.Middleware{}, mws...)

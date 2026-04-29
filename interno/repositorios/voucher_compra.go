@@ -43,6 +43,12 @@ type VoucherCompraRegistro struct {
 	CodigoResgate       *string    `json:"codigo_resgate,omitempty"`
 	ExpiraPagamento     *time.Time `json:"expira_pagamento_em,omitempty"`
 	ExpiraResgate       *time.Time `json:"expira_resgate_em,omitempty"`
+	UsadoEm             *time.Time `json:"usado_em,omitempty"`
+	PostoUsoID          *string    `json:"id_posto_uso,omitempty"`
+	PostoUsoNome        string     `json:"posto_uso_nome,omitempty"`
+	OperadorUsuarioID   *string    `json:"operador_usuario_id,omitempty"`
+	OperadorPapel       string     `json:"operador_papel,omitempty"`
+	OperadorNomeSnapshot string    `json:"operador_nome_snapshot,omitempty"`
 	CriadoEm            time.Time  `json:"criado_em"`
 	AtualizadoEm        time.Time  `json:"atualizado_em"`
 	TipoCompra          string     `json:"tipo_compra,omitempty"`               // LITRO | VALOR | UNIDADE (preenchido quando há JOIN campanhas)
@@ -78,6 +84,9 @@ type VoucherCompraPainelLinha struct {
 	CampanhaTitulo      string     `json:"campanha_titulo,omitempty"`
 	CombustivelRedeID   *string    `json:"id_combustivel_rede,omitempty"`
 	CombustivelRedeNome string     `json:"combustivel_rede_nome,omitempty"`
+	OperadorUsuarioID   *string    `json:"operador_usuario_id,omitempty"`
+	OperadorPapel       string     `json:"operador_papel,omitempty"`
+	OperadorNomeSnapshot string    `json:"operador_nome_snapshot,omitempty"`
 }
 
 // VoucherCompraRepositorio persistência de compras de voucher no app.
@@ -93,9 +102,13 @@ type VoucherCompraRepositorio interface {
 	AtivarPagamentoAprovado(id, redeID, codigo string, expiraResgate time.Time) error
 	// BuscarPorCodigoResgateConsultaEquipe voucher da rede por código de resgate + dados do cliente (nome/e-mail).
 	BuscarPorCodigoResgateConsultaEquipe(codigo, redeID string) (*VoucherCompraConsultaEquipe, error)
+	// RegistrarBaixaUso marca ATIVO como USADO com posto e operador (frentista/gerente/gestor).
+	RegistrarBaixaUso(idVoucher string, redeID string, idPosto *string, operadorUsuarioID, operadorPapel, operadorNome string) error
 	// ListarPainelPorRede listagem paginada para o painel; statusFiltro vazio = todos os status.
 	ListarPainelPorRede(redeID string, limite, offset int, statusFiltro string) ([]*VoucherCompraPainelLinha, int, error)
 }
+
+var ErrVoucherBaixaNaoPermitida = errors.New("baixa nao permitida neste estado do voucher")
 
 // Filtra campanha elegível (mesma lógica pública + pertence à rede).
 func CampanhaElegivelApp(c *modelos.Campanha, idRede string, agora time.Time) bool {

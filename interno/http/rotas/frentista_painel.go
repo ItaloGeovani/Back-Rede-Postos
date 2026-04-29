@@ -17,6 +17,7 @@ func RegistrarFrentistaPainel(muxPrincipal *http.ServeMux, h *handlers.Handlers,
 	mux.Handle("/v1/frentista/dev/postos/listar", http.HandlerFunc(h.ListarPostosGestorRede))
 	mux.Handle("/v1/frentista/dev/relatorios/resumo", http.HandlerFunc(h.ResumoRelatoriosGestorRede))
 	mux.Handle("/v1/frentista/dev/vouchers/consultar", http.HandlerFunc(h.GetVoucherConsultaPorCodigoEquipe))
+	mux.Handle("/v1/frentista/dev/vouchers/baixar", http.HandlerFunc(h.PostVoucherBaixaEquipe))
 	mux.Handle("/v1/frentista/dev/vouchers/listar", http.HandlerFunc(h.GetVouchersComprasPainelEquipe))
 
 	chain := append([]middlewares.Middleware{}, mws...)

@@ -33,6 +33,14 @@ const (
 // ErrVoucherCampanhaInvalida campanha inexistente ou não aplicável.
 var ErrVoucherCampanhaInvalida = errors.New("campanha invalida ou inaplicavel")
 
+// Erros da equipe ao registrar uso (baixa) do voucher no posto.
+var (
+	ErrVoucherEquipeSemPosto        = errors.New("usuario sem posto vinculado; nao e possivel registrar uso")
+	ErrVoucherEquipePapelBaixa      = errors.New("papel nao autorizado a registrar uso do voucher")
+	ErrVoucherEquipeNaoAtivoUso     = errors.New("voucher nao esta ativo para uso")
+	ErrVoucherEquipeResgateExpirado = errors.New("prazo de resgate do voucher expirou")
+)
+
 // ServicoVoucherCompra compra de voucher no app (PIX + campanha).
 type ServicoVoucherCompra struct {
 	repo       repositorios.VoucherCompraRepositorio
@@ -445,6 +453,49 @@ func (s *ServicoVoucherCompra) ConsultarPorCodigoResgateEquipe(idRede, codigo st
 		return nil, ErrDadosInvalidos
 	}
 	return s.repo.BuscarPorCodigoResgateConsultaEquipe(codigo, idRede)
+}
+
+// RegistrarBaixaPorCodigoEquipe marca o voucher ATIVO como USADO e grava posto + operador (frentista/gerente/gestor).
+func (s *ServicoVoucherCompra) RegistrarBaixaPorCodigoEquipe(u *modelos.UsuarioSessao, codigo string, idPostoOpcional *string) (*repositorios.VoucherCompraConsultaEquipe, error) {
+	if u == nil {
+		return nil, ErrDadosInvalidos
+	}
+	codigo = strings.TrimSpace(codigo)
+	if strings.TrimSpace(u.IDRede) == "" || strings.TrimSpace(u.IDUsuario) == "" || codigo == "" {
+		return nil, ErrDadosInvalidos
+	}
+	var postoPtr *string
+	switch u.Papel {
+	case modelos.PapelFrentista, modelos.PapelGerentePosto:
+		p := strings.TrimSpace(u.IDPosto)
+		if p == "" {
+			return nil, ErrVoucherEquipeSemPosto
+		}
+		postoPtr = &p
+	case modelos.PapelGestorRede, modelos.PapelSuperAdmin:
+		if idPostoOpcional != nil {
+			p := strings.TrimSpace(*idPostoOpcional)
+			if p != "" {
+				postoPtr = &p
+			}
+		}
+	default:
+		return nil, ErrVoucherEquipePapelBaixa
+	}
+	vc, err := s.repo.BuscarPorCodigoResgateConsultaEquipe(codigo, u.IDRede)
+	if err != nil {
+		return nil, err
+	}
+	if strings.TrimSpace(vc.Status) != "ATIVO" {
+		return nil, ErrVoucherEquipeNaoAtivoUso
+	}
+	if vc.ExpiraResgate != nil && time.Now().After(*vc.ExpiraResgate) {
+		return nil, ErrVoucherEquipeResgateExpirado
+	}
+	if err := s.repo.RegistrarBaixaUso(vc.ID, u.IDRede, postoPtr, u.IDUsuario, string(u.Papel), strings.TrimSpace(u.NomeCompleto)); err != nil {
+		return nil, err
+	}
+	return s.repo.BuscarPorCodigoResgateConsultaEquipe(codigo, u.IDRede)
 }
 
 // ListarPainelPorRede compras da rede para o painel (gestor, equipe, super-admin); status vazio = todos.

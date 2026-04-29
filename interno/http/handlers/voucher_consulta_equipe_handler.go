@@ -1,7 +1,9 @@
 package handlers
 
 import (
+	"encoding/json"
 	"errors"
+	"io"
 	"net/http"
 	"strings"
 
@@ -42,6 +44,55 @@ func (h *Handlers) GetVoucherConsultaPorCodigoEquipe(w http.ResponseWriter, r *h
 			return
 		}
 		utils.ResponderErro(w, http.StatusInternalServerError, "falha ao consultar")
+		return
+	}
+	utils.ResponderJSON(w, http.StatusOK, out)
+}
+
+type bodyVoucherBaixaEquipe struct {
+	Codigo  string  `json:"codigo"`
+	IDPosto *string `json:"id_posto,omitempty"`
+}
+
+// PostVoucherBaixaEquipe POST JSON { codigo, id_posto? } — registra uso (USADO); frentista/gerente usam posto do token; gestor pode enviar id_posto.
+func (h *Handlers) PostVoucherBaixaEquipe(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		utils.ResponderErro(w, http.StatusMethodNotAllowed, "metodo nao permitido")
+		return
+	}
+	u := middlewares.Usuario(r.Context())
+	if u == nil {
+		utils.ResponderErro(w, http.StatusUnauthorized, "usuario nao autenticado")
+		return
+	}
+	if h.voucherCompraSvc == nil {
+		utils.ResponderErro(w, http.StatusServiceUnavailable, "servico indisponivel")
+		return
+	}
+	var body bodyVoucherBaixaEquipe
+	if err := json.NewDecoder(io.LimitReader(r.Body, 1<<16)).Decode(&body); err != nil {
+		utils.ResponderErro(w, http.StatusBadRequest, "corpo json invalido")
+		return
+	}
+	out, err := h.voucherCompraSvc.RegistrarBaixaPorCodigoEquipe(u, body.Codigo, body.IDPosto)
+	if err != nil {
+		if errors.Is(err, repositorios.ErrVoucherCompraNaoEncontrado) {
+			utils.ResponderErro(w, http.StatusNotFound, "voucher nao encontrado nesta rede")
+			return
+		}
+		if errors.Is(err, servicos.ErrDadosInvalidos) {
+			utils.ResponderErro(w, http.StatusBadRequest, err.Error())
+			return
+		}
+		if errors.Is(err, servicos.ErrVoucherEquipeSemPosto) || errors.Is(err, servicos.ErrVoucherEquipePapelBaixa) {
+			utils.ResponderErro(w, http.StatusBadRequest, err.Error())
+			return
+		}
+		if errors.Is(err, servicos.ErrVoucherEquipeNaoAtivoUso) || errors.Is(err, servicos.ErrVoucherEquipeResgateExpirado) || errors.Is(err, repositorios.ErrVoucherBaixaNaoPermitida) {
+			utils.ResponderErro(w, http.StatusConflict, err.Error())
+			return
+		}
+		utils.ResponderErro(w, http.StatusInternalServerError, "falha ao registrar uso do voucher")
 		return
 	}
 	utils.ResponderJSON(w, http.StatusOK, out)
