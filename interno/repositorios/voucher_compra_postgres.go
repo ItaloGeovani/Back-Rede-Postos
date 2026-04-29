@@ -110,7 +110,65 @@ func scanVcr(s scannerVcr, x *VoucherCompraRegistro) error {
 	return nil
 }
 
-func scanVcrEquipe(s scannerVcr, x *VoucherCompraRegistro, clienteNome, clienteEmail *string, campanhaBaseDesconto, campanhaTitulo *string) error {
+func preencherTipoCampanhaDoJoin(x *VoucherCompraRegistro, cbCamp, cbTit sql.NullString) {
+	baseCamp := ""
+	if cbCamp.Valid {
+		baseCamp = strings.TrimSpace(cbCamp.String)
+	}
+	x.CampanhaTitulo = ""
+	if cbTit.Valid {
+		x.CampanhaTitulo = strings.TrimSpace(cbTit.String)
+	}
+	x.TipoCompra = TipoCompraVoucher(x.Litros, baseCamp)
+}
+
+func scanVcrComCampanha(s scannerVcr, x *VoucherCompraRegistro) error {
+	var camp, ref, cod sql.NullString
+	var mpID sql.NullInt64
+	var litros sql.NullFloat64
+	var exPag, exRes sql.NullTime
+	var cbCamp, cbTit sql.NullString
+	err := s.Scan(
+		&x.ID, &x.RedeID, &x.UsuarioID, &camp, &x.ValorSolicitado, &x.DescontoAplicado, &x.ValorFinal, &litros, &x.Status,
+		&mpID, &ref, &cod, &exPag, &exRes, &x.CriadoEm, &x.AtualizadoEm,
+		&cbCamp, &cbTit,
+	)
+	if err != nil {
+		return err
+	}
+	if litros.Valid {
+		v := litros.Float64
+		x.Litros = &v
+	}
+	if camp.Valid && strings.TrimSpace(camp.String) != "" {
+		v := camp.String
+		x.CampanhaID = &v
+	}
+	if mpID.Valid {
+		v := mpID.Int64
+		x.MpPaymentID = &v
+	}
+	if ref.Valid {
+		v := ref.String
+		x.ReferenciaPagamento = &v
+	}
+	if cod.Valid {
+		v := cod.String
+		x.CodigoResgate = &v
+	}
+	if exPag.Valid {
+		t := exPag.Time
+		x.ExpiraPagamento = &t
+	}
+	if exRes.Valid {
+		t := exRes.Time
+		x.ExpiraResgate = &t
+	}
+	preencherTipoCampanhaDoJoin(x, cbCamp, cbTit)
+	return nil
+}
+
+func scanVcrEquipe(s scannerVcr, x *VoucherCompraRegistro, clienteNome, clienteEmail *string) error {
 	var camp, ref, cod sql.NullString
 	var mpID sql.NullInt64
 	var litros sql.NullFloat64
@@ -153,20 +211,7 @@ func scanVcrEquipe(s scannerVcr, x *VoucherCompraRegistro, clienteNome, clienteE
 		t := exRes.Time
 		x.ExpiraResgate = &t
 	}
-	if campanhaBaseDesconto != nil {
-		if cbCamp.Valid {
-			*campanhaBaseDesconto = strings.TrimSpace(cbCamp.String)
-		} else {
-			*campanhaBaseDesconto = ""
-		}
-	}
-	if campanhaTitulo != nil {
-		if cbTit.Valid {
-			*campanhaTitulo = strings.TrimSpace(cbTit.String)
-		} else {
-			*campanhaTitulo = ""
-		}
-	}
+	preencherTipoCampanhaDoJoin(x, cbCamp, cbTit)
 	return nil
 }
 
@@ -175,13 +220,16 @@ func (r *voucherCompraPostgres) BuscarPorID(id, usuarioID, redeID string) (*Vouc
 	defer cancel()
 	const q = `
 SELECT
-  id::text, rede_id::text, usuario_id::text, campanha_id::text,
-  valor_solicitado, desconto_aplicado, valor_final, litros::float8, status::text,
-  mp_payment_id, referencia_pagamento, codigo_resgate, expira_pagamento_em, expira_resgate_em, criado_em, atualizado_em
-FROM voucher_compras
-WHERE id = $1::uuid AND usuario_id = $2::uuid AND rede_id = $3::uuid`
+  v.id::text, v.rede_id::text, v.usuario_id::text, v.campanha_id::text,
+  v.valor_solicitado, v.desconto_aplicado, v.valor_final, v.litros::float8, v.status::text,
+  v.mp_payment_id, v.referencia_pagamento, v.codigo_resgate, v.expira_pagamento_em, v.expira_resgate_em, v.criado_em, v.atualizado_em,
+  c.base_desconto,
+  COALESCE(NULLIF(TRIM(c.titulo), ''), NULLIF(TRIM(c.nome), ''))
+FROM voucher_compras v
+LEFT JOIN campanhas c ON c.id = v.campanha_id AND c.rede_id = v.rede_id
+WHERE v.id = $1::uuid AND v.usuario_id = $2::uuid AND v.rede_id = $3::uuid`
 	var x VoucherCompraRegistro
-	err := scanVcr(r.db.QueryRowContext(ctx, q, id, usuarioID, redeID), &x)
+	err := scanVcrComCampanha(r.db.QueryRowContext(ctx, q, id, usuarioID, redeID), &x)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return nil, ErrVoucherCompraNaoEncontrado
@@ -199,12 +247,15 @@ func (r *voucherCompraPostgres) ListarDoUsuario(redeID, usuarioID string, limite
 	defer cancel()
 	rows, err := r.db.QueryContext(ctx, `
 SELECT
-  id::text, rede_id::text, usuario_id::text, campanha_id::text,
-  valor_solicitado, desconto_aplicado, valor_final, litros::float8, status::text,
-  mp_payment_id, referencia_pagamento, codigo_resgate, expira_pagamento_em, expira_resgate_em, criado_em, atualizado_em
-FROM voucher_compras
-WHERE rede_id = $1::uuid AND usuario_id = $2::uuid
-ORDER BY criado_em DESC
+  v.id::text, v.rede_id::text, v.usuario_id::text, v.campanha_id::text,
+  v.valor_solicitado, v.desconto_aplicado, v.valor_final, v.litros::float8, v.status::text,
+  v.mp_payment_id, v.referencia_pagamento, v.codigo_resgate, v.expira_pagamento_em, v.expira_resgate_em, v.criado_em, v.atualizado_em,
+  c.base_desconto,
+  COALESCE(NULLIF(TRIM(c.titulo), ''), NULLIF(TRIM(c.nome), ''))
+FROM voucher_compras v
+LEFT JOIN campanhas c ON c.id = v.campanha_id AND c.rede_id = v.rede_id
+WHERE v.rede_id = $1::uuid AND v.usuario_id = $2::uuid
+ORDER BY v.criado_em DESC
 LIMIT $3`, redeID, usuarioID, limite)
 	if err != nil {
 		return nil, err
@@ -213,7 +264,7 @@ LIMIT $3`, redeID, usuarioID, limite)
 	var out []*VoucherCompraRegistro
 	for rows.Next() {
 		var x VoucherCompraRegistro
-		if err := scanVcr(rows, &x); err != nil {
+		if err := scanVcrComCampanha(rows, &x); err != nil {
 			return nil, err
 		}
 		out = append(out, &x)
@@ -309,8 +360,7 @@ WHERE v.rede_id = $1::uuid
 LIMIT 1`
 	var out VoucherCompraConsultaEquipe
 	var nome, email string
-	var baseCamp, titCamp string
-	err := scanVcrEquipe(r.db.QueryRowContext(ctx, q, redeID, codigo), &out.VoucherCompraRegistro, &nome, &email, &baseCamp, &titCamp)
+	err := scanVcrEquipe(r.db.QueryRowContext(ctx, q, redeID, codigo), &out.VoucherCompraRegistro, &nome, &email)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return nil, ErrVoucherCompraNaoEncontrado
@@ -319,8 +369,6 @@ LIMIT 1`
 	}
 	out.ClienteNomeCompleto = nome
 	out.ClienteEmail = email
-	out.CampanhaTitulo = titCamp
-	out.TipoCompra = TipoCompraVoucher(out.Litros, baseCamp)
 	return &out, nil
 }
 

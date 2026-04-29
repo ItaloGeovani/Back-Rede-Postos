@@ -43,6 +43,8 @@ type VoucherCompraRegistro struct {
 	ExpiraResgate       *time.Time `json:"expira_resgate_em,omitempty"`
 	CriadoEm            time.Time  `json:"criado_em"`
 	AtualizadoEm        time.Time  `json:"atualizado_em"`
+	TipoCompra          string     `json:"tipo_compra,omitempty"`               // LITRO | VALOR | UNIDADE (preenchido quando há JOIN campanhas)
+	CampanhaTitulo      string     `json:"campanha_titulo,omitempty"`         // título amigável da campanha, se houver
 }
 
 // VoucherCompraConsultaEquipe linha de voucher + cliente dono (consulta frentista/gerente na rede).
@@ -50,8 +52,6 @@ type VoucherCompraConsultaEquipe struct {
 	VoucherCompraRegistro
 	ClienteNomeCompleto string `json:"cliente_nome_completo"`
 	ClienteEmail        string `json:"cliente_email,omitempty"`
-	TipoCompra          string `json:"tipo_compra"`               // LITRO | VALOR | UNIDADE
-	CampanhaTitulo      string `json:"campanha_titulo,omitempty"` // nome amigável da campanha, se houver
 }
 
 // VoucherCompraPainelLinha voucher + cliente e posto de uso (listagem no painel da rede).
