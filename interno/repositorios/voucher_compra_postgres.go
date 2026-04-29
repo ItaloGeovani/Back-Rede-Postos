@@ -504,8 +504,14 @@ UPDATE voucher_compras SET
   usado_em = NOW(),
   posto_id_uso = $3,
   operador_usuario_id = $4::uuid,
-  operador_papel = NULLIF(TRIM($5), ''),
-  operador_nome_snapshot = NULLIF(TRIM($6), ''),
+  operador_papel = COALESCE(
+    (SELECT NULLIF(TRIM(u.papel::text), '') FROM usuarios u WHERE u.id = $4::uuid AND u.rede_id = $2::uuid LIMIT 1),
+    NULLIF(TRIM($5), '')
+  ),
+  operador_nome_snapshot = COALESCE(
+    (SELECT NULLIF(TRIM(u.nome_completo), '') FROM usuarios u WHERE u.id = $4::uuid AND u.rede_id = $2::uuid LIMIT 1),
+    NULLIF(TRIM($6), '')
+  ),
   atualizado_em = NOW()
 WHERE id = $1::uuid AND rede_id = $2::uuid
   AND status = 'ATIVO'
