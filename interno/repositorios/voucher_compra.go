@@ -35,6 +35,8 @@ type VoucherCompraRegistro struct {
 	DescontoAplicado    float64    `json:"desconto_aplicado"`
 	ValorFinal          float64    `json:"valor_final"`
 	Litros              *float64   `json:"litros,omitempty"`
+	CombustivelRedeID   *string    `json:"id_combustivel_rede,omitempty"`
+	CombustivelRedeNome string     `json:"combustivel_rede_nome,omitempty"`
 	Status              string     `json:"status"`
 	MpPaymentID         *int64     `json:"mp_payment_id,omitempty"`
 	ReferenciaPagamento *string   `json:"referencia_pagamento,omitempty"`
@@ -74,6 +76,8 @@ type VoucherCompraPainelLinha struct {
 	PostoUsoNome        string     `json:"posto_uso_nome,omitempty"`
 	TipoCompra          string     `json:"tipo_compra"`
 	CampanhaTitulo      string     `json:"campanha_titulo,omitempty"`
+	CombustivelRedeID   *string    `json:"id_combustivel_rede,omitempty"`
+	CombustivelRedeNome string     `json:"combustivel_rede_nome,omitempty"`
 }
 
 // VoucherCompraRepositorio persistência de compras de voucher no app.

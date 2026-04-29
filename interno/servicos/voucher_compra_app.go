@@ -342,6 +342,10 @@ func (s *ServicoVoucherCompra) PagarComPixInicia(ctx context.Context, idRede, id
 		v := *calc.Litros
 		reg.Litros = &v
 	}
+	if idCombustivelRede != nil && strings.TrimSpace(*idCombustivelRede) != "" {
+		s := strings.TrimSpace(*idCombustivelRede)
+		reg.CombustivelRedeID = &s
+	}
 	if err := s.repo.CriarPendenteComPix(reg); err != nil {
 		return nil, res, err
 	}

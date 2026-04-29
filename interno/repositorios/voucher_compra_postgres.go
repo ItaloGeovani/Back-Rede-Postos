@@ -28,16 +28,17 @@ func (r *voucherCompraPostgres) CriarPendenteComPix(x *VoucherCompraRegistro) er
 	if x.ReferenciaPagamento != nil {
 		ref = *x.ReferenciaPagamento
 	}
+	comb := nullUUIDString(x.CombustivelRedeID)
 	return r.db.QueryRowContext(ctx, `
 INSERT INTO voucher_compras (
-  id, rede_id, usuario_id, campanha_id, valor_solicitado, desconto_aplicado, valor_final, litros, status,
+  id, rede_id, usuario_id, campanha_id, combustivel_rede_id, valor_solicitado, desconto_aplicado, valor_final, litros, status,
   mp_payment_id, referencia_pagamento, expira_pagamento_em, criado_em, atualizado_em
 ) VALUES (
-  $1::uuid, $2::uuid, $3::uuid, $4, $5, $6, $7, $8, $9::status_voucher_compra,
-  $10, $11, $12, NOW(), NOW()
+  $1::uuid, $2::uuid, $3::uuid, $4, $5, $6, $7, $8, $9, $10::status_voucher_compra,
+  $11, $12, $13, NOW(), NOW()
 )
 RETURNING id::text, criado_em, atualizado_em
-`, x.ID, x.RedeID, x.UsuarioID, camp, x.ValorSolicitado, x.DescontoAplicado, x.ValorFinal, nullFloat64Ptr(x.Litros), x.Status,
+`, x.ID, x.RedeID, x.UsuarioID, camp, comb, x.ValorSolicitado, x.DescontoAplicado, x.ValorFinal, nullFloat64Ptr(x.Litros), x.Status,
 		mpID, nullStringPtr(ref), x.ExpiraPagamento,
 	).Scan(&x.ID, &x.CriadoEm, &x.AtualizadoEm)
 }
@@ -72,9 +73,11 @@ func scanVcr(s scannerVcr, x *VoucherCompraRegistro) error {
 	var mpID sql.NullInt64
 	var litros sql.NullFloat64
 	var exPag, exRes sql.NullTime
+	var combID, combNome sql.NullString
 	err := s.Scan(
 		&x.ID, &x.RedeID, &x.UsuarioID, &camp, &x.ValorSolicitado, &x.DescontoAplicado, &x.ValorFinal, &litros, &x.Status,
 		&mpID, &ref, &cod, &exPag, &exRes, &x.CriadoEm, &x.AtualizadoEm,
+		&combID, &combNome,
 	)
 	if err != nil {
 		return err
@@ -107,6 +110,7 @@ func scanVcr(s scannerVcr, x *VoucherCompraRegistro) error {
 		t := exRes.Time
 		x.ExpiraResgate = &t
 	}
+	preencherCombustivelRede(x, combID, combNome)
 	return nil
 }
 
@@ -122,16 +126,30 @@ func preencherTipoCampanhaDoJoin(x *VoucherCompraRegistro, cbCamp, cbTit sql.Nul
 	x.TipoCompra = TipoCompraVoucher(x.Litros, baseCamp)
 }
 
+func preencherCombustivelRede(x *VoucherCompraRegistro, id, nome sql.NullString) {
+	x.CombustivelRedeID = nil
+	x.CombustivelRedeNome = ""
+	if id.Valid && strings.TrimSpace(id.String) != "" {
+		v := strings.TrimSpace(id.String)
+		x.CombustivelRedeID = &v
+	}
+	if nome.Valid && strings.TrimSpace(nome.String) != "" {
+		x.CombustivelRedeNome = strings.TrimSpace(nome.String)
+	}
+}
+
 func scanVcrComCampanha(s scannerVcr, x *VoucherCompraRegistro) error {
 	var camp, ref, cod sql.NullString
 	var mpID sql.NullInt64
 	var litros sql.NullFloat64
 	var exPag, exRes sql.NullTime
 	var cbCamp, cbTit sql.NullString
+	var combID, combNome sql.NullString
 	err := s.Scan(
 		&x.ID, &x.RedeID, &x.UsuarioID, &camp, &x.ValorSolicitado, &x.DescontoAplicado, &x.ValorFinal, &litros, &x.Status,
 		&mpID, &ref, &cod, &exPag, &exRes, &x.CriadoEm, &x.AtualizadoEm,
 		&cbCamp, &cbTit,
+		&combID, &combNome,
 	)
 	if err != nil {
 		return err
@@ -165,6 +183,7 @@ func scanVcrComCampanha(s scannerVcr, x *VoucherCompraRegistro) error {
 		x.ExpiraResgate = &t
 	}
 	preencherTipoCampanhaDoJoin(x, cbCamp, cbTit)
+	preencherCombustivelRede(x, combID, combNome)
 	return nil
 }
 
@@ -174,11 +193,13 @@ func scanVcrEquipe(s scannerVcr, x *VoucherCompraRegistro, clienteNome, clienteE
 	var litros sql.NullFloat64
 	var exPag, exRes sql.NullTime
 	var cbCamp, cbTit sql.NullString
+	var combID, combNome sql.NullString
 	err := s.Scan(
 		&x.ID, &x.RedeID, &x.UsuarioID, &camp, &x.ValorSolicitado, &x.DescontoAplicado, &x.ValorFinal, &litros, &x.Status,
 		&mpID, &ref, &cod, &exPag, &exRes, &x.CriadoEm, &x.AtualizadoEm,
 		clienteNome, clienteEmail,
 		&cbCamp, &cbTit,
+		&combID, &combNome,
 	)
 	if err != nil {
 		return err
@@ -212,6 +233,7 @@ func scanVcrEquipe(s scannerVcr, x *VoucherCompraRegistro, clienteNome, clienteE
 		x.ExpiraResgate = &t
 	}
 	preencherTipoCampanhaDoJoin(x, cbCamp, cbTit)
+	preencherCombustivelRede(x, combID, combNome)
 	return nil
 }
 
@@ -224,9 +246,12 @@ SELECT
   v.valor_solicitado, v.desconto_aplicado, v.valor_final, v.litros::float8, v.status::text,
   v.mp_payment_id, v.referencia_pagamento, v.codigo_resgate, v.expira_pagamento_em, v.expira_resgate_em, v.criado_em, v.atualizado_em,
   c.base_desconto,
-  COALESCE(NULLIF(TRIM(c.titulo), ''), NULLIF(TRIM(c.nome), ''))
+  COALESCE(NULLIF(TRIM(c.titulo), ''), NULLIF(TRIM(c.nome), '')),
+  v.combustivel_rede_id::text,
+  COALESCE(NULLIF(TRIM(comb.nome), ''), '')
 FROM voucher_compras v
 LEFT JOIN campanhas c ON c.id = v.campanha_id AND c.rede_id = v.rede_id
+LEFT JOIN rede_combustiveis comb ON comb.id = v.combustivel_rede_id AND comb.rede_id = v.rede_id
 WHERE v.id = $1::uuid AND v.usuario_id = $2::uuid AND v.rede_id = $3::uuid`
 	var x VoucherCompraRegistro
 	err := scanVcrComCampanha(r.db.QueryRowContext(ctx, q, id, usuarioID, redeID), &x)
@@ -251,9 +276,12 @@ SELECT
   v.valor_solicitado, v.desconto_aplicado, v.valor_final, v.litros::float8, v.status::text,
   v.mp_payment_id, v.referencia_pagamento, v.codigo_resgate, v.expira_pagamento_em, v.expira_resgate_em, v.criado_em, v.atualizado_em,
   c.base_desconto,
-  COALESCE(NULLIF(TRIM(c.titulo), ''), NULLIF(TRIM(c.nome), ''))
+  COALESCE(NULLIF(TRIM(c.titulo), ''), NULLIF(TRIM(c.nome), '')),
+  v.combustivel_rede_id::text,
+  COALESCE(NULLIF(TRIM(comb.nome), ''), '')
 FROM voucher_compras v
 LEFT JOIN campanhas c ON c.id = v.campanha_id AND c.rede_id = v.rede_id
+LEFT JOIN rede_combustiveis comb ON comb.id = v.combustivel_rede_id AND comb.rede_id = v.rede_id
 WHERE v.rede_id = $1::uuid AND v.usuario_id = $2::uuid
 ORDER BY v.criado_em DESC
 LIMIT $3`, redeID, usuarioID, limite)
@@ -318,11 +346,14 @@ func (r *voucherCompraPostgres) BuscarPorIDRede(id, redeID string) (*VoucherComp
 	defer cancel()
 	const q = `
 SELECT
-  id::text, rede_id::text, usuario_id::text, campanha_id::text,
-  valor_solicitado, desconto_aplicado, valor_final, litros::float8, status::text,
-  mp_payment_id, referencia_pagamento, codigo_resgate, expira_pagamento_em, expira_resgate_em, criado_em, atualizado_em
-FROM voucher_compras
-WHERE id = $1::uuid AND rede_id = $2::uuid`
+  v.id::text, v.rede_id::text, v.usuario_id::text, v.campanha_id::text,
+  v.valor_solicitado, v.desconto_aplicado, v.valor_final, v.litros::float8, v.status::text,
+  v.mp_payment_id, v.referencia_pagamento, v.codigo_resgate, v.expira_pagamento_em, v.expira_resgate_em, v.criado_em, v.atualizado_em,
+  v.combustivel_rede_id::text,
+  COALESCE(NULLIF(TRIM(comb.nome), ''), '')
+FROM voucher_compras v
+LEFT JOIN rede_combustiveis comb ON comb.id = v.combustivel_rede_id AND comb.rede_id = v.rede_id
+WHERE v.id = $1::uuid AND v.rede_id = $2::uuid`
 	var x VoucherCompraRegistro
 	err := scanVcr(r.db.QueryRowContext(ctx, q, id, redeID), &x)
 	if err != nil {
@@ -350,10 +381,13 @@ SELECT
   COALESCE(TRIM(u.nome_completo), ''),
   COALESCE(TRIM(u.email), ''),
   c.base_desconto,
-  COALESCE(NULLIF(TRIM(c.titulo), ''), NULLIF(TRIM(c.nome), ''))
+  COALESCE(NULLIF(TRIM(c.titulo), ''), NULLIF(TRIM(c.nome), '')),
+  v.combustivel_rede_id::text,
+  COALESCE(NULLIF(TRIM(comb.nome), ''), '')
 FROM voucher_compras v
 INNER JOIN usuarios u ON u.id = v.usuario_id AND u.rede_id = v.rede_id
 LEFT JOIN campanhas c ON c.id = v.campanha_id AND c.rede_id = v.rede_id
+LEFT JOIN rede_combustiveis comb ON comb.id = v.combustivel_rede_id AND comb.rede_id = v.rede_id
 WHERE v.rede_id = $1::uuid
   AND v.codigo_resgate IS NOT NULL
   AND upper(trim(v.codigo_resgate)) = upper(trim($2))
@@ -400,12 +434,14 @@ func scanVoucherPainelLinha(s scannerVcr, x *VoucherCompraPainelLinha) error {
 	var exPag, exRes, usado sql.NullTime
 	var postoNome sql.NullString
 	var cbCamp, cbTit sql.NullString
+	var combID, combNome sql.NullString
 	err := s.Scan(
 		&x.ID, &x.UsuarioID, &camp,
 		&x.ValorSolicitado, &x.DescontoAplicado, &x.ValorFinal, &litros, &x.Status,
 		&cod, &exPag, &exRes, &usado, &x.CriadoEm, &x.AtualizadoEm,
 		&x.ClienteNomeCompleto, &postoNome,
 		&cbCamp, &cbTit,
+		&combID, &combNome,
 	)
 	if err != nil {
 		return err
@@ -445,6 +481,15 @@ func scanVoucherPainelLinha(s scannerVcr, x *VoucherCompraPainelLinha) error {
 	if postoNome.Valid {
 		x.PostoUsoNome = strings.TrimSpace(postoNome.String)
 	}
+	x.CombustivelRedeID = nil
+	x.CombustivelRedeNome = ""
+	if combID.Valid && strings.TrimSpace(combID.String) != "" {
+		v := strings.TrimSpace(combID.String)
+		x.CombustivelRedeID = &v
+	}
+	if combNome.Valid {
+		x.CombustivelRedeNome = strings.TrimSpace(combNome.String)
+	}
 	return nil
 }
 
@@ -479,11 +524,14 @@ SELECT
   COALESCE(TRIM(u.nome_completo), ''),
   p.nome,
   c.base_desconto,
-  COALESCE(NULLIF(TRIM(c.titulo), ''), NULLIF(TRIM(c.nome), ''))
+  COALESCE(NULLIF(TRIM(c.titulo), ''), NULLIF(TRIM(c.nome), '')),
+  v.combustivel_rede_id::text,
+  COALESCE(NULLIF(TRIM(comb.nome), ''), '')
 FROM voucher_compras v
 INNER JOIN usuarios u ON u.id = v.usuario_id AND u.rede_id = v.rede_id
 LEFT JOIN postos p ON p.id = v.posto_id_uso AND p.rede_id = v.rede_id
 LEFT JOIN campanhas c ON c.id = v.campanha_id AND c.rede_id = v.rede_id
+LEFT JOIN rede_combustiveis comb ON comb.id = v.combustivel_rede_id AND comb.rede_id = v.rede_id
 WHERE v.rede_id = $1::uuid
   AND ($2 = '' OR v.status::text = $2)
 ORDER BY v.criado_em DESC
