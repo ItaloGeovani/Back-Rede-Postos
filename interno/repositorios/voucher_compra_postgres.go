@@ -110,6 +110,50 @@ func scanVcr(s scannerVcr, x *VoucherCompraRegistro) error {
 	return nil
 }
 
+func scanVcrEquipe(s scannerVcr, x *VoucherCompraRegistro, clienteNome, clienteEmail *string) error {
+	var camp, ref, cod sql.NullString
+	var mpID sql.NullInt64
+	var litros sql.NullFloat64
+	var exPag, exRes sql.NullTime
+	err := s.Scan(
+		&x.ID, &x.RedeID, &x.UsuarioID, &camp, &x.ValorSolicitado, &x.DescontoAplicado, &x.ValorFinal, &litros, &x.Status,
+		&mpID, &ref, &cod, &exPag, &exRes, &x.CriadoEm, &x.AtualizadoEm,
+		clienteNome, clienteEmail,
+	)
+	if err != nil {
+		return err
+	}
+	if litros.Valid {
+		v := litros.Float64
+		x.Litros = &v
+	}
+	if camp.Valid && strings.TrimSpace(camp.String) != "" {
+		v := camp.String
+		x.CampanhaID = &v
+	}
+	if mpID.Valid {
+		v := mpID.Int64
+		x.MpPaymentID = &v
+	}
+	if ref.Valid {
+		v := ref.String
+		x.ReferenciaPagamento = &v
+	}
+	if cod.Valid {
+		v := cod.String
+		x.CodigoResgate = &v
+	}
+	if exPag.Valid {
+		t := exPag.Time
+		x.ExpiraPagamento = &t
+	}
+	if exRes.Valid {
+		t := exRes.Time
+		x.ExpiraResgate = &t
+	}
+	return nil
+}
+
 func (r *voucherCompraPostgres) BuscarPorID(id, usuarioID, redeID string) (*VoucherCompraRegistro, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
@@ -223,6 +267,41 @@ WHERE id = $1::uuid AND rede_id = $2::uuid`
 	return &x, nil
 }
 
+func (r *voucherCompraPostgres) BuscarPorCodigoResgateConsultaEquipe(codigo, redeID string) (*VoucherCompraConsultaEquipe, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), 8*time.Second)
+	defer cancel()
+	codigo = strings.TrimSpace(codigo)
+	redeID = strings.TrimSpace(redeID)
+	if codigo == "" || redeID == "" {
+		return nil, ErrVoucherCompraNaoEncontrado
+	}
+	const q = `
+SELECT
+  v.id::text, v.rede_id::text, v.usuario_id::text, v.campanha_id::text,
+  v.valor_solicitado, v.desconto_aplicado, v.valor_final, v.litros::float8, v.status::text,
+  v.mp_payment_id, v.referencia_pagamento, v.codigo_resgate, v.expira_pagamento_em, v.expira_resgate_em, v.criado_em, v.atualizado_em,
+  COALESCE(TRIM(u.nome_completo), ''),
+  COALESCE(TRIM(u.email), '')
+FROM voucher_compras v
+INNER JOIN usuarios u ON u.id = v.usuario_id AND u.rede_id = v.rede_id
+WHERE v.rede_id = $1::uuid
+  AND v.codigo_resgate IS NOT NULL
+  AND upper(trim(v.codigo_resgate)) = upper(trim($2))
+LIMIT 1`
+	var out VoucherCompraConsultaEquipe
+	var nome, email string
+	err := scanVcrEquipe(r.db.QueryRowContext(ctx, q, redeID, codigo), &out.VoucherCompraRegistro, &nome, &email)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, ErrVoucherCompraNaoEncontrado
+		}
+		return nil, err
+	}
+	out.ClienteNomeCompleto = nome
+	out.ClienteEmail = email
+	return &out, nil
+}
+
 func (r *voucherCompraPostgres) AtivarPagamentoAprovado(id, redeID, codigo string, expiraResgate time.Time) error {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
@@ -243,4 +322,101 @@ WHERE id = $1::uuid AND rede_id = $2::uuid
 		return errors.New("nenhuma linha ativada; status ou id invalido")
 	}
 	return nil
+}
+
+func scanVoucherPainelLinha(s scannerVcr, x *VoucherCompraPainelLinha) error {
+	var camp, cod sql.NullString
+	var litros sql.NullFloat64
+	var exPag, exRes, usado sql.NullTime
+	var postoNome sql.NullString
+	err := s.Scan(
+		&x.ID, &x.UsuarioID, &camp,
+		&x.ValorSolicitado, &x.DescontoAplicado, &x.ValorFinal, &litros, &x.Status,
+		&cod, &exPag, &exRes, &usado, &x.CriadoEm, &x.AtualizadoEm,
+		&x.ClienteNomeCompleto, &postoNome,
+	)
+	if err != nil {
+		return err
+	}
+	if litros.Valid {
+		v := litros.Float64
+		x.Litros = &v
+	}
+	if camp.Valid && strings.TrimSpace(camp.String) != "" {
+		v := camp.String
+		x.CampanhaID = &v
+	}
+	if cod.Valid && strings.TrimSpace(cod.String) != "" {
+		v := cod.String
+		x.CodigoResgate = &v
+	}
+	if exPag.Valid {
+		t := exPag.Time
+		x.ExpiraPagamento = &t
+	}
+	if exRes.Valid {
+		t := exRes.Time
+		x.ExpiraResgate = &t
+	}
+	if usado.Valid {
+		t := usado.Time
+		x.UsadoEm = &t
+	}
+	if postoNome.Valid {
+		x.PostoUsoNome = strings.TrimSpace(postoNome.String)
+	}
+	return nil
+}
+
+func (r *voucherCompraPostgres) ListarPainelPorRede(redeID string, limite, offset int, statusFiltro string) ([]*VoucherCompraPainelLinha, int, error) {
+	redeID = strings.TrimSpace(redeID)
+	if redeID == "" {
+		return nil, 0, errors.New("rede vazia")
+	}
+	if limite < 1 || limite > 200 {
+		limite = 50
+	}
+	if offset < 0 {
+		offset = 0
+	}
+	statusFiltro = strings.TrimSpace(statusFiltro)
+	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	defer cancel()
+	var total int
+	err := r.db.QueryRowContext(ctx, `
+SELECT COUNT(*) FROM voucher_compras v
+WHERE v.rede_id = $1::uuid
+  AND ($2 = '' OR v.status::text = $2)
+`, redeID, statusFiltro).Scan(&total)
+	if err != nil {
+		return nil, 0, err
+	}
+	rows, err := r.db.QueryContext(ctx, `
+SELECT
+  v.id::text, v.usuario_id::text, v.campanha_id::text,
+  v.valor_solicitado, v.desconto_aplicado, v.valor_final, v.litros::float8, v.status::text,
+  v.codigo_resgate, v.expira_pagamento_em, v.expira_resgate_em, v.usado_em, v.criado_em, v.atualizado_em,
+  COALESCE(TRIM(u.nome_completo), ''),
+  p.nome
+FROM voucher_compras v
+INNER JOIN usuarios u ON u.id = v.usuario_id AND u.rede_id = v.rede_id
+LEFT JOIN postos p ON p.id = v.posto_id_uso AND p.rede_id = v.rede_id
+WHERE v.rede_id = $1::uuid
+  AND ($2 = '' OR v.status::text = $2)
+ORDER BY v.criado_em DESC
+LIMIT $3 OFFSET $4
+`, redeID, statusFiltro, limite, offset)
+	if err != nil {
+		return nil, 0, err
+	}
+	defer rows.Close()
+	var out []*VoucherCompraPainelLinha
+	for rows.Next() {
+		var x VoucherCompraPainelLinha
+		if err := scanVoucherPainelLinha(rows, &x); err != nil {
+			return nil, 0, err
+		}
+		out = append(out, &x)
+	}
+	return out, total, rows.Err()
 }

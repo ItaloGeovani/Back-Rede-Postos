@@ -411,6 +411,42 @@ func (s *ServicoVoucherCompra) BuscarMeu(id, rede, usuario string) (*repositorio
 	return s.repo.BuscarPorID(id, usuario, rede)
 }
 
+// ConsultarPorCodigoResgateEquipe voucher por código de resgate na rede (frentista / gerente / gestor).
+func (s *ServicoVoucherCompra) ConsultarPorCodigoResgateEquipe(idRede, codigo string) (*repositorios.VoucherCompraConsultaEquipe, error) {
+	idRede = strings.TrimSpace(idRede)
+	codigo = strings.TrimSpace(codigo)
+	if idRede == "" || codigo == "" {
+		return nil, ErrDadosInvalidos
+	}
+	return s.repo.BuscarPorCodigoResgateConsultaEquipe(codigo, idRede)
+}
+
+// ListarPainelPorRede compras da rede para o painel (gestor, equipe, super-admin); status vazio = todos.
+func (s *ServicoVoucherCompra) ListarPainelPorRede(idRede string, limite, offset int, status string) ([]*repositorios.VoucherCompraPainelLinha, int, error) {
+	idRede = strings.TrimSpace(idRede)
+	if idRede == "" {
+		return nil, 0, ErrDadosInvalidos
+	}
+	if limite < 1 {
+		limite = 50
+	}
+	if limite > 200 {
+		limite = 200
+	}
+	if offset < 0 {
+		offset = 0
+	}
+	status = strings.TrimSpace(status)
+	if status != "" {
+		switch status {
+		case "AGUARDANDO_PAGAMENTO", "ATIVO", "USADO", "EXPIRADO", "CANCELADO":
+		default:
+			return nil, 0, ErrDadosInvalidos
+		}
+	}
+	return s.repo.ListarPainelPorRede(idRede, limite, offset, status)
+}
+
 // ProcessarPagamentoAprovadoWebhook chamado do webhook MP quando o pagamento está approved.
 func (s *ServicoVoucherCompra) ProcessarPagamentoAprovadoWebhook(idRede string, pay *payment.Response) {
 	if pay == nil {

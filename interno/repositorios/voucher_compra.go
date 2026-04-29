@@ -29,6 +29,33 @@ type VoucherCompraRegistro struct {
 	AtualizadoEm        time.Time  `json:"atualizado_em"`
 }
 
+// VoucherCompraConsultaEquipe linha de voucher + cliente dono (consulta frentista/gerente na rede).
+type VoucherCompraConsultaEquipe struct {
+	VoucherCompraRegistro
+	ClienteNomeCompleto string `json:"cliente_nome_completo"`
+	ClienteEmail        string `json:"cliente_email,omitempty"`
+}
+
+// VoucherCompraPainelLinha voucher + cliente e posto de uso (listagem no painel da rede).
+type VoucherCompraPainelLinha struct {
+	ID                  string     `json:"id"`
+	UsuarioID           string     `json:"usuario_id"`
+	CampanhaID          *string    `json:"id_campanha,omitempty"`
+	ValorSolicitado     float64    `json:"valor_solicitado"`
+	DescontoAplicado    float64    `json:"desconto_aplicado"`
+	ValorFinal          float64    `json:"valor_final"`
+	Litros              *float64   `json:"litros,omitempty"`
+	Status              string     `json:"status"`
+	CodigoResgate       *string    `json:"codigo_resgate,omitempty"`
+	ExpiraPagamento     *time.Time `json:"expira_pagamento_em,omitempty"`
+	ExpiraResgate       *time.Time `json:"expira_resgate_em,omitempty"`
+	UsadoEm             *time.Time `json:"usado_em,omitempty"`
+	CriadoEm            time.Time  `json:"criado_em"`
+	AtualizadoEm        time.Time  `json:"atualizado_em"`
+	ClienteNomeCompleto string     `json:"cliente_nome_completo"`
+	PostoUsoNome        string     `json:"posto_uso_nome,omitempty"`
+}
+
 // VoucherCompraRepositorio persistência de compras de voucher no app.
 type VoucherCompraRepositorio interface {
 	// CriarPendenteComPix grava após criação do payment no MP (um único INSERT).
@@ -40,6 +67,10 @@ type VoucherCompraRepositorio interface {
 	ListarUsosAprovadosPorCampanha(redeID, usuarioID string) (map[string]int, error)
 	BuscarPorIDRede(id, redeID string) (*VoucherCompraRegistro, error)
 	AtivarPagamentoAprovado(id, redeID, codigo string, expiraResgate time.Time) error
+	// BuscarPorCodigoResgateConsultaEquipe voucher da rede por código de resgate + dados do cliente (nome/e-mail).
+	BuscarPorCodigoResgateConsultaEquipe(codigo, redeID string) (*VoucherCompraConsultaEquipe, error)
+	// ListarPainelPorRede listagem paginada para o painel; statusFiltro vazio = todos os status.
+	ListarPainelPorRede(redeID string, limite, offset int, statusFiltro string) ([]*VoucherCompraPainelLinha, int, error)
 }
 
 // Filtra campanha elegível (mesma lógica pública + pertence à rede).
