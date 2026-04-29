@@ -107,6 +107,28 @@ func (s *ServicoVoucherCompra) Calcular(
 		return nil, ErrDadosInvalidos
 	}
 	if idCampanha == nil || strings.TrimSpace(*idCampanha) == "" {
+		// Sem campanha: compra por valor (R$) ou por litro (preço de tabela do combustível).
+		if idCombustivelRede != nil && strings.TrimSpace(*idCombustivelRede) != "" && litros != nil && *litros > 1e-9 {
+			if s.combustive == nil {
+				return nil, ErrDadosInvalidos
+			}
+			idC := strings.TrimSpace(*idCombustivelRede)
+			comb, err := s.combustive.BuscarPorID(idC, idRede)
+			if err != nil || !comb.Ativo {
+				return nil, ErrVoucherCampanhaInvalida
+			}
+			valorCompra := round2(comb.PrecoPorLitro * (*litros))
+			if valorCompra < 1.0 {
+				return nil, ErrDadosInvalidos
+			}
+			lv := *litros
+			return &ResultadoCalcularVoucher{
+				ValorSolicitado:  valorCompra,
+				ValorFinal:       valorCompra,
+				DescontoAplicado: 0,
+				Litros:           &lv,
+			}, nil
+		}
 		if valor < 1.0 {
 			return nil, ErrDadosInvalidos
 		}
