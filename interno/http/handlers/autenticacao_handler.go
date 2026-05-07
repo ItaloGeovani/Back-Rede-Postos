@@ -15,6 +15,11 @@ func isEmailCompatibilidadeLoja(email string) bool {
 	return strings.EqualFold(strings.TrimSpace(email), emailCompatibilidadeLoja)
 }
 
+func isLoginPainelWeb(r *http.Request) bool {
+	v := strings.TrimSpace(r.Header.Get("X-Painel-Web"))
+	return v == "1" || strings.EqualFold(v, "true")
+}
+
 type reqLoginPainelUnificado struct {
 	IDRede string `json:"id_rede"`
 	Email  string `json:"email"`
@@ -115,7 +120,8 @@ func (h *Handlers) LoginPainelUnificadoDev(w http.ResponseWriter, r *http.Reques
 	if req.IDRede == "" {
 		// Compatibilidade para revisão de loja (Google Play / App Store):
 		// versões antigas não enviam id_rede no login.
-		if !isEmailCompatibilidadeLoja(req.Email) {
+		// Para o painel web unificado, também permitimos fallback sem id_rede.
+		if !isEmailCompatibilidadeLoja(req.Email) && !isLoginPainelWeb(r) {
 			utils.ResponderErro(w, http.StatusBadRequest, "id_rede e obrigatorio para login na rede")
 			return
 		}
