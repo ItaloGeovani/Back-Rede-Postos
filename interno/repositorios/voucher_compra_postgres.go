@@ -31,14 +31,17 @@ func (r *voucherCompraPostgres) CriarPendenteComPix(x *VoucherCompraRegistro) er
 	comb := nullUUIDString(x.CombustivelRedeID)
 	return r.db.QueryRowContext(ctx, `
 INSERT INTO voucher_compras (
-  id, rede_id, usuario_id, campanha_id, combustivel_rede_id, valor_solicitado, desconto_aplicado, valor_final, litros, status,
+  id, rede_id, usuario_id, campanha_id, combustivel_rede_id, valor_solicitado, desconto_aplicado, valor_final,
+  tipo_beneficio, cashback_percentual, cashback_valor, litros, status,
   mp_payment_id, referencia_pagamento, expira_pagamento_em, criado_em, atualizado_em
 ) VALUES (
-  $1::uuid, $2::uuid, $3::uuid, $4, $5, $6, $7, $8, $9, $10::status_voucher_compra,
-  $11, $12, $13, NOW(), NOW()
+  $1::uuid, $2::uuid, $3::uuid, $4, $5, $6, $7, $8,
+  $9, $10, $11, $12, $13::status_voucher_compra,
+  $14, $15, $16, NOW(), NOW()
 )
 RETURNING id::text, criado_em, atualizado_em
-`, x.ID, x.RedeID, x.UsuarioID, camp, comb, x.ValorSolicitado, x.DescontoAplicado, x.ValorFinal, nullFloat64Ptr(x.Litros), x.Status,
+`, x.ID, x.RedeID, x.UsuarioID, camp, comb, x.ValorSolicitado, x.DescontoAplicado, x.ValorFinal,
+		emptyAsDefault(x.TipoBeneficio, "DESCONTO"), nullFloat64IfPositive(x.CashbackPercentual), x.CashbackValor, nullFloat64Ptr(x.Litros), x.Status,
 		mpID, nullStringPtr(ref), x.ExpiraPagamento,
 	).Scan(&x.ID, &x.CriadoEm, &x.AtualizadoEm)
 }
@@ -64,6 +67,20 @@ func nullUUIDString(p *string) any {
 	return strings.TrimSpace(*p)
 }
 
+func nullFloat64IfPositive(v float64) any {
+	if v <= 0 {
+		return nil
+	}
+	return v
+}
+
+func emptyAsDefault(v, def string) string {
+	if strings.TrimSpace(v) == "" {
+		return def
+	}
+	return strings.TrimSpace(v)
+}
+
 type scannerVcr interface {
 	Scan(dest ...any) error
 }
@@ -71,12 +88,14 @@ type scannerVcr interface {
 func scanVcr(s scannerVcr, x *VoucherCompraRegistro) error {
 	var camp, ref, cod sql.NullString
 	var mpID sql.NullInt64
-	var litros sql.NullFloat64
-	var exPag, exRes, usado sql.NullTime
+	var litros, cashbackPct, cashbackVal sql.NullFloat64
+	var exPag, exRes, usado, cashbackCred sql.NullTime
+	var tipoBeneficio sql.NullString
 	var combID, combNome sql.NullString
 	var postoID, postoNome, opUID, opPapel, opNome sql.NullString
 	err := s.Scan(
-		&x.ID, &x.RedeID, &x.UsuarioID, &camp, &x.ValorSolicitado, &x.DescontoAplicado, &x.ValorFinal, &litros, &x.Status,
+		&x.ID, &x.RedeID, &x.UsuarioID, &camp, &x.ValorSolicitado, &x.DescontoAplicado, &x.ValorFinal,
+		&tipoBeneficio, &cashbackPct, &cashbackVal, &cashbackCred, &litros, &x.Status,
 		&mpID, &ref, &cod, &exPag, &exRes, &x.CriadoEm, &x.AtualizadoEm,
 		&combID, &combNome,
 		&usado, &postoID, &postoNome, &opUID, &opPapel, &opNome,
@@ -91,6 +110,23 @@ func scanVcr(s scannerVcr, x *VoucherCompraRegistro) error {
 	if camp.Valid && strings.TrimSpace(camp.String) != "" {
 		v := camp.String
 		x.CampanhaID = &v
+	}
+	x.TipoBeneficio = "DESCONTO"
+	if tipoBeneficio.Valid && strings.TrimSpace(tipoBeneficio.String) != "" {
+		x.TipoBeneficio = strings.TrimSpace(tipoBeneficio.String)
+	}
+	x.CashbackPercentual = 0
+	if cashbackPct.Valid {
+		x.CashbackPercentual = cashbackPct.Float64
+	}
+	x.CashbackValor = 0
+	if cashbackVal.Valid {
+		x.CashbackValor = cashbackVal.Float64
+	}
+	x.CashbackCreditadoEm = nil
+	if cashbackCred.Valid {
+		t := cashbackCred.Time
+		x.CashbackCreditadoEm = &t
 	}
 	if mpID.Valid {
 		v := mpID.Int64
@@ -174,13 +210,15 @@ func preencherUsoPostoOperador(x *VoucherCompraRegistro, usado sql.NullTime, pos
 func scanVcrComCampanha(s scannerVcr, x *VoucherCompraRegistro) error {
 	var camp, ref, cod sql.NullString
 	var mpID sql.NullInt64
-	var litros sql.NullFloat64
-	var exPag, exRes, usado sql.NullTime
+	var litros, cashbackPct, cashbackVal sql.NullFloat64
+	var exPag, exRes, usado, cashbackCred sql.NullTime
+	var tipoBeneficio sql.NullString
 	var cbCamp, cbTit sql.NullString
 	var combID, combNome sql.NullString
 	var postoID, postoNome, opUID, opPapel, opNome sql.NullString
 	err := s.Scan(
-		&x.ID, &x.RedeID, &x.UsuarioID, &camp, &x.ValorSolicitado, &x.DescontoAplicado, &x.ValorFinal, &litros, &x.Status,
+		&x.ID, &x.RedeID, &x.UsuarioID, &camp, &x.ValorSolicitado, &x.DescontoAplicado, &x.ValorFinal,
+		&tipoBeneficio, &cashbackPct, &cashbackVal, &cashbackCred, &litros, &x.Status,
 		&mpID, &ref, &cod, &exPag, &exRes, &x.CriadoEm, &x.AtualizadoEm,
 		&cbCamp, &cbTit,
 		&combID, &combNome,
@@ -196,6 +234,23 @@ func scanVcrComCampanha(s scannerVcr, x *VoucherCompraRegistro) error {
 	if camp.Valid && strings.TrimSpace(camp.String) != "" {
 		v := camp.String
 		x.CampanhaID = &v
+	}
+	x.TipoBeneficio = "DESCONTO"
+	if tipoBeneficio.Valid && strings.TrimSpace(tipoBeneficio.String) != "" {
+		x.TipoBeneficio = strings.TrimSpace(tipoBeneficio.String)
+	}
+	x.CashbackPercentual = 0
+	if cashbackPct.Valid {
+		x.CashbackPercentual = cashbackPct.Float64
+	}
+	x.CashbackValor = 0
+	if cashbackVal.Valid {
+		x.CashbackValor = cashbackVal.Float64
+	}
+	x.CashbackCreditadoEm = nil
+	if cashbackCred.Valid {
+		t := cashbackCred.Time
+		x.CashbackCreditadoEm = &t
 	}
 	if mpID.Valid {
 		v := mpID.Int64
@@ -226,13 +281,15 @@ func scanVcrComCampanha(s scannerVcr, x *VoucherCompraRegistro) error {
 func scanVcrEquipe(s scannerVcr, x *VoucherCompraRegistro, clienteNome, clienteEmail *string) error {
 	var camp, ref, cod sql.NullString
 	var mpID sql.NullInt64
-	var litros sql.NullFloat64
-	var exPag, exRes, usado sql.NullTime
+	var litros, cashbackPct, cashbackVal sql.NullFloat64
+	var exPag, exRes, usado, cashbackCred sql.NullTime
+	var tipoBeneficio sql.NullString
 	var cbCamp, cbTit sql.NullString
 	var combID, combNome sql.NullString
 	var postoID, postoNome, opUID, opPapel, opNome sql.NullString
 	err := s.Scan(
-		&x.ID, &x.RedeID, &x.UsuarioID, &camp, &x.ValorSolicitado, &x.DescontoAplicado, &x.ValorFinal, &litros, &x.Status,
+		&x.ID, &x.RedeID, &x.UsuarioID, &camp, &x.ValorSolicitado, &x.DescontoAplicado, &x.ValorFinal,
+		&tipoBeneficio, &cashbackPct, &cashbackVal, &cashbackCred, &litros, &x.Status,
 		&mpID, &ref, &cod, &exPag, &exRes, &x.CriadoEm, &x.AtualizadoEm,
 		clienteNome, clienteEmail,
 		&cbCamp, &cbTit,
@@ -249,6 +306,23 @@ func scanVcrEquipe(s scannerVcr, x *VoucherCompraRegistro, clienteNome, clienteE
 	if camp.Valid && strings.TrimSpace(camp.String) != "" {
 		v := camp.String
 		x.CampanhaID = &v
+	}
+	x.TipoBeneficio = "DESCONTO"
+	if tipoBeneficio.Valid && strings.TrimSpace(tipoBeneficio.String) != "" {
+		x.TipoBeneficio = strings.TrimSpace(tipoBeneficio.String)
+	}
+	x.CashbackPercentual = 0
+	if cashbackPct.Valid {
+		x.CashbackPercentual = cashbackPct.Float64
+	}
+	x.CashbackValor = 0
+	if cashbackVal.Valid {
+		x.CashbackValor = cashbackVal.Float64
+	}
+	x.CashbackCreditadoEm = nil
+	if cashbackCred.Valid {
+		t := cashbackCred.Time
+		x.CashbackCreditadoEm = &t
 	}
 	if mpID.Valid {
 		v := mpID.Int64
@@ -282,7 +356,9 @@ func (r *voucherCompraPostgres) BuscarPorID(id, usuarioID, redeID string) (*Vouc
 	const q = `
 SELECT
   v.id::text, v.rede_id::text, v.usuario_id::text, v.campanha_id::text,
-  v.valor_solicitado, v.desconto_aplicado, v.valor_final, v.litros::float8, v.status::text,
+  v.valor_solicitado, v.desconto_aplicado, v.valor_final,
+  v.tipo_beneficio, v.cashback_percentual::float8, v.cashback_valor::float8, v.cashback_creditado_em,
+  v.litros::float8, v.status::text,
   v.mp_payment_id, v.referencia_pagamento, v.codigo_resgate, v.expira_pagamento_em, v.expira_resgate_em, v.criado_em, v.atualizado_em,
   c.base_desconto,
   COALESCE(NULLIF(TRIM(c.titulo), ''), NULLIF(TRIM(c.nome), '')),
@@ -316,7 +392,9 @@ func (r *voucherCompraPostgres) ListarDoUsuario(redeID, usuarioID string, limite
 	rows, err := r.db.QueryContext(ctx, `
 SELECT
   v.id::text, v.rede_id::text, v.usuario_id::text, v.campanha_id::text,
-  v.valor_solicitado, v.desconto_aplicado, v.valor_final, v.litros::float8, v.status::text,
+  v.valor_solicitado, v.desconto_aplicado, v.valor_final,
+  v.tipo_beneficio, v.cashback_percentual::float8, v.cashback_valor::float8, v.cashback_creditado_em,
+  v.litros::float8, v.status::text,
   v.mp_payment_id, v.referencia_pagamento, v.codigo_resgate, v.expira_pagamento_em, v.expira_resgate_em, v.criado_em, v.atualizado_em,
   c.base_desconto,
   COALESCE(NULLIF(TRIM(c.titulo), ''), NULLIF(TRIM(c.nome), '')),
@@ -394,7 +472,9 @@ func (r *voucherCompraPostgres) BuscarPorIDRede(id, redeID string) (*VoucherComp
 	const q = `
 SELECT
   v.id::text, v.rede_id::text, v.usuario_id::text, v.campanha_id::text,
-  v.valor_solicitado, v.desconto_aplicado, v.valor_final, v.litros::float8, v.status::text,
+  v.valor_solicitado, v.desconto_aplicado, v.valor_final,
+  v.tipo_beneficio, v.cashback_percentual::float8, v.cashback_valor::float8, v.cashback_creditado_em,
+  v.litros::float8, v.status::text,
   v.mp_payment_id, v.referencia_pagamento, v.codigo_resgate, v.expira_pagamento_em, v.expira_resgate_em, v.criado_em, v.atualizado_em,
   v.combustivel_rede_id::text,
   COALESCE(NULLIF(TRIM(comb.nome), ''), ''),
@@ -427,7 +507,9 @@ func (r *voucherCompraPostgres) BuscarPorCodigoResgateConsultaEquipe(codigo, red
 	const q = `
 SELECT
   v.id::text, v.rede_id::text, v.usuario_id::text, v.campanha_id::text,
-  v.valor_solicitado, v.desconto_aplicado, v.valor_final, v.litros::float8, v.status::text,
+  v.valor_solicitado, v.desconto_aplicado, v.valor_final,
+  v.tipo_beneficio, v.cashback_percentual::float8, v.cashback_valor::float8, v.cashback_creditado_em,
+  v.litros::float8, v.status::text,
   v.mp_payment_id, v.referencia_pagamento, v.codigo_resgate, v.expira_pagamento_em, v.expira_resgate_em, v.criado_em, v.atualizado_em,
   COALESCE(TRIM(u.nome_completo), ''),
   COALESCE(TRIM(u.email), ''),
@@ -481,6 +563,26 @@ WHERE id = $1::uuid AND rede_id = $2::uuid
 		return errors.New("nenhuma linha ativada; status ou id invalido")
 	}
 	return nil
+}
+
+func (r *voucherCompraPostgres) MarcarCashbackCreditado(id, redeID string, creditadoEm time.Time) (bool, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	res, err := r.db.ExecContext(ctx, `
+UPDATE voucher_compras
+SET cashback_creditado_em = $3,
+    atualizado_em = NOW()
+WHERE id = $1::uuid
+  AND rede_id = $2::uuid
+  AND tipo_beneficio = 'CASHBACK'
+  AND cashback_valor > 0
+  AND cashback_creditado_em IS NULL
+`, id, redeID, creditadoEm)
+	if err != nil {
+		return false, err
+	}
+	n, _ := res.RowsAffected()
+	return n > 0, nil
 }
 
 func (r *voucherCompraPostgres) RegistrarBaixaUso(idVoucher, redeID string, idPosto *string, operadorUsuarioID, operadorPapel, operadorNome string) error {

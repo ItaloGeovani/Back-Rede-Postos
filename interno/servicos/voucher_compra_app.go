@@ -22,6 +22,7 @@ import (
 
 const (
 	prefixoRefVoucherCompra           = "vcompra:"
+	tipoRefVoucherCashback            = "voucher_cashback"
 	defaultMinutosPagamentoPixVoucher = 30
 	defaultDiasValidadeResgateVoucher = 7
 	minDiasVoucherResgate             = 1
@@ -48,6 +49,7 @@ type ServicoVoucherCompra struct {
 	combustive repositorios.CombustivelRedeRepositorio
 	mpGW       repositorios.MercadoPagoGatewayRepositorio
 	rede       repositorios.RedeRepositorio
+	carteira   repositorios.CarteiraRepositorio
 	fcm        repositorios.FCMListador
 	cfg        config.Config
 	indique    *ServicoIndiqueGanhe
@@ -58,12 +60,13 @@ func NovoServicoVoucherCompra(
 	camp ServicoCampanha,
 	mp repositorios.MercadoPagoGatewayRepositorio,
 	rede repositorios.RedeRepositorio,
+	carteira repositorios.CarteiraRepositorio,
 	comb repositorios.CombustivelRedeRepositorio,
 	fcm repositorios.FCMListador,
 	cfg config.Config,
 	ind *ServicoIndiqueGanhe,
 ) *ServicoVoucherCompra {
-	return &ServicoVoucherCompra{repo: repo, campanha: camp, mpGW: mp, rede: rede, combustive: comb, fcm: fcm, cfg: cfg, indique: ind}
+	return &ServicoVoucherCompra{repo: repo, campanha: camp, mpGW: mp, rede: rede, carteira: carteira, combustive: comb, fcm: fcm, cfg: cfg, indique: ind}
 }
 
 func (s *ServicoVoucherCompra) duracaoPagamentoPix(idRede string) time.Duration {
@@ -96,6 +99,9 @@ type ResultadoCalcularVoucher struct {
 	ValorSolicitado  float64  `json:"valor_solicitado"`
 	DescontoAplicado float64  `json:"desconto_aplicado"`
 	ValorFinal       float64  `json:"valor_final"`
+	TipoBeneficio    string   `json:"tipo_beneficio,omitempty"`
+	CashbackPercentual float64 `json:"cashback_percentual,omitempty"`
+	CashbackPrevisto float64  `json:"cashback_previsto,omitempty"`
 	Litros           *float64 `json:"litros,omitempty"`
 	CampanhaID       *string  `json:"id_campanha,omitempty"`
 	CampanhaTitulo   string   `json:"campanha_titulo,omitempty"`
@@ -200,12 +206,28 @@ func (s *ServicoVoucherCompra) Calcular(
 	if err != nil {
 		return nil, err
 	}
-	out := &ResultadoCalcularVoucher{ValorSolicitado: valorCompra, ValorFinal: valorCompra, DescontoAplicado: 0}
+	beneficio := strings.TrimSpace(c.TipoBeneficio)
+	if beneficio == "" {
+		beneficio = modelos.TipoBeneficioDesconto
+	}
+	out := &ResultadoCalcularVoucher{
+		ValorSolicitado: valorCompra,
+		ValorFinal:      valorCompra,
+		DescontoAplicado: 0,
+		TipoBeneficio:   beneficio,
+	}
 	if c.MaxUsosPorCliente != nil {
 		// contagem feita em Pagar com usuarioID
 	}
-	out.DescontoAplicado = round2(desconto)
-	out.ValorFinal = round2(math.Max(0.01, valorCompra-out.DescontoAplicado))
+	if beneficio == modelos.TipoBeneficioCashback {
+		out.CashbackPercentual = normalizarPercentual(c.ValorDesconto)
+		out.CashbackPrevisto = floor2(valorCompra * (out.CashbackPercentual / 100.0))
+		out.DescontoAplicado = 0
+		out.ValorFinal = round2(math.Max(0.01, valorCompra))
+	} else {
+		out.DescontoAplicado = round2(desconto)
+		out.ValorFinal = round2(math.Max(0.01, valorCompra-out.DescontoAplicado))
+	}
 	out.CampanhaID = idCampanha
 	out.CampanhaTitulo = tituloCampanha(c)
 	if c.BaseDesconto == modelos.BaseDescontoLitro && litrosVal != nil {
@@ -288,6 +310,27 @@ func round2(x float64) float64 {
 	return math.Round(x*100) / 100
 }
 
+func floor2(x float64) float64 {
+	if x <= 0 {
+		return 0
+	}
+	return math.Floor(x*100) / 100
+}
+
+func floor6(x float64) float64 {
+	if x <= 0 {
+		return 0
+	}
+	return math.Floor(x*1_000_000) / 1_000_000
+}
+
+func normalizarPercentual(v float64) float64 {
+	if v > 0 && v <= 1 {
+		return v * 100
+	}
+	return v
+}
+
 // PagarComPixInicia cria cobrança MP e registro local.
 func (s *ServicoVoucherCompra) PagarComPixInicia(ctx context.Context, idRede, idUsuario string, valor float64, idCampanha *string,
 	idCombustivelRede *string, litros *float64,
@@ -359,6 +402,9 @@ func (s *ServicoVoucherCompra) PagarComPixInicia(ctx context.Context, idRede, id
 		ValorSolicitado:     calc.ValorSolicitado,
 		DescontoAplicado:    calc.DescontoAplicado,
 		ValorFinal:          calc.ValorFinal,
+		TipoBeneficio:       calc.TipoBeneficio,
+		CashbackPercentual:  calc.CashbackPercentual,
+		CashbackValor:       calc.CashbackPrevisto,
 		Status:              "AGUARDANDO_PAGAMENTO",
 		MpPaymentID:         &mpid,
 		ReferenciaPagamento: &ref,
@@ -540,6 +586,7 @@ func (s *ServicoVoucherCompra) ProcessarPagamentoAprovadoWebhook(idRede string, 
 		return
 	}
 	if vc.Status == "ATIVO" {
+		s.creditarCashbackVoucher(idRede, vc)
 		return
 	}
 	if vc.Status != "AGUARDANDO_PAGAMENTO" {
@@ -555,6 +602,7 @@ func (s *ServicoVoucherCompra) ProcessarPagamentoAprovadoWebhook(idRede string, 
 			if s.indique != nil && uid != "" {
 				s.indique.AposVoucherAprovado(idRede, uid, idCompra)
 			}
+			s.creditarCashbackVoucher(idRede, vc)
 			go s.notificarPushVoucherAprovado(uid, idCompra, cod, vc.ValorFinal)
 			return
 		}
@@ -564,6 +612,52 @@ func (s *ServicoVoucherCompra) ProcessarPagamentoAprovadoWebhook(idRede string, 
 		cod = gerarCodigoResgate()
 	}
 	log.Printf("voucher webhook: falha ativar id=%s: %v", idCompra, lastErr)
+}
+
+func (s *ServicoVoucherCompra) creditarCashbackVoucher(idRede string, vc *repositorios.VoucherCompraRegistro) {
+	if vc == nil || strings.TrimSpace(vc.TipoBeneficio) != modelos.TipoBeneficioCashback {
+		return
+	}
+	if vc.CashbackValor <= 0 || vc.CashbackCreditadoEm != nil {
+		return
+	}
+	if s.carteira == nil {
+		log.Printf("voucher cashback: carteira indisponivel compra=%s", strings.TrimSpace(vc.ID))
+		return
+	}
+	uid := strings.TrimSpace(vc.UsuarioID)
+	if uid == "" {
+		return
+	}
+	rede, err := s.rede.BuscarPorID(idRede)
+	if err != nil {
+		log.Printf("voucher cashback: buscar rede %s: %v", idRede, err)
+		return
+	}
+	cotacao := rede.MoedaVirtualCotacao
+	if cotacao <= 0 {
+		log.Printf("voucher cashback: cotacao invalida rede=%s", idRede)
+		return
+	}
+	carteiraID, err := s.carteira.ObterOuCriarCarteira(idRede, uid, strings.TrimSpace(rede.MoedaVirtualNome), cotacao)
+	if err != nil {
+		log.Printf("voucher cashback: obter carteira usuario=%s: %v", uid, err)
+		return
+	}
+	valorFiat := floor2(vc.CashbackValor)
+	valorToken := floor6(valorFiat / cotacao)
+	if valorFiat <= 0 || valorToken <= 0 {
+		return
+	}
+	if err := s.carteira.CreditarCashback(idRede, carteiraID, valorFiat, valorToken, tipoRefVoucherCashback, vc.ID); err != nil {
+		log.Printf("voucher cashback: creditar compra=%s: %v", vc.ID, err)
+		return
+	}
+	if ok, err := s.repo.MarcarCashbackCreditado(vc.ID, idRede, time.Now()); err != nil {
+		log.Printf("voucher cashback: marcar creditado compra=%s: %v", vc.ID, err)
+	} else if ok {
+		log.Printf("voucher cashback: creditado compra=%s valor=%0.2f", vc.ID, valorFiat)
+	}
 }
 
 func (s *ServicoVoucherCompra) notificarPushVoucherAprovado(idUsuario, idCompra, codigo string, valor float64) {

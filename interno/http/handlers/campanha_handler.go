@@ -26,6 +26,7 @@ type reqCriarCampanha struct {
 	Status                string   `json:"status"`
 	ValidaNoApp           *bool    `json:"valida_no_app"`
 	ValidaNoPostoFisico   *bool    `json:"valida_no_posto_fisico"`
+	TipoBeneficio         string   `json:"tipo_beneficio"`
 	ModalidadeDesconto    string   `json:"modalidade_desconto"`
 	BaseDesconto          string   `json:"base_desconto"`
 	ValorDesconto         float64    `json:"valor_desconto"`
@@ -50,6 +51,7 @@ type reqEditarCampanha struct {
 	Status              string   `json:"status"`
 	ValidaNoApp         *bool    `json:"valida_no_app"`
 	ValidaNoPostoFisico *bool    `json:"valida_no_posto_fisico"`
+	TipoBeneficio       string   `json:"tipo_beneficio"`
 	ModalidadeDesconto  string   `json:"modalidade_desconto"`
 	BaseDesconto        string   `json:"base_desconto"`
 	ValorDesconto         float64    `json:"valor_desconto"`
@@ -134,6 +136,7 @@ func (h *Handlers) CriarCampanhaRedeDev(w http.ResponseWriter, r *http.Request) 
 		Status:                modelos.StatusCampanha(strings.TrimSpace(req.Status)),
 		ValidaNoApp:           boolOuPadrao(req.ValidaNoApp, true),
 		ValidaNoPostoFisico:   boolOuPadrao(req.ValidaNoPostoFisico, false),
+		TipoBeneficio:         req.TipoBeneficio,
 		ModalidadeDesconto:    req.ModalidadeDesconto,
 		BaseDesconto:          req.BaseDesconto,
 		ValorDesconto:         req.ValorDesconto,
@@ -217,6 +220,7 @@ func (h *Handlers) EditarCampanhaRedeDev(w http.ResponseWriter, r *http.Request)
 		Status:              modelos.StatusCampanha(strings.TrimSpace(req.Status)),
 		ValidaNoApp:         boolOuPadrao(req.ValidaNoApp, true),
 		ValidaNoPostoFisico: boolOuPadrao(req.ValidaNoPostoFisico, false),
+		TipoBeneficio:       req.TipoBeneficio,
 		ModalidadeDesconto:  req.ModalidadeDesconto,
 		BaseDesconto:        req.BaseDesconto,
 		ValorDesconto:         req.ValorDesconto,

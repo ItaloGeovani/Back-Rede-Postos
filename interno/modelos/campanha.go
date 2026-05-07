@@ -24,6 +24,11 @@ const (
 	BaseDescontoUnidade     = "UNIDADE"
 )
 
+const (
+	TipoBeneficioDesconto = "DESCONTO"
+	TipoBeneficioCashback = "CASHBACK"
+)
+
 type Campanha struct {
 	ID                   string         `json:"id"`
 	IDRede               string         `json:"id_rede"`
@@ -39,6 +44,7 @@ type Campanha struct {
 	VigenciaFim          *time.Time     `json:"vigencia_fim,omitempty"`
 	ValidaNoApp          bool           `json:"valida_no_app"`
 	ValidaNoPostoFisico  bool           `json:"valida_no_posto_fisico"`
+	TipoBeneficio        string         `json:"tipo_beneficio"`
 	ModalidadeDesconto   string         `json:"modalidade_desconto"`
 	BaseDesconto         string         `json:"base_desconto"`
 	ValorDesconto         float64        `json:"valor_desconto"`

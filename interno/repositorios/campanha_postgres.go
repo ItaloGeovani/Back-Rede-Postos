@@ -93,6 +93,7 @@ SELECT
   c.vigencia_fim,
   c.valida_no_app,
   c.valida_no_posto_fisico,
+  c.tipo_beneficio,
   c.modalidade_desconto,
   c.base_desconto,
   c.valor_desconto::float8,
@@ -126,6 +127,7 @@ ORDER BY c.vigencia_inicio DESC NULLS LAST, c.criado_em DESC`
 			&c.ID, &c.IDRede, &c.Nome, &c.Titulo, &c.Descricao, &c.ImagemURL,
 			&c.IDPosto, &c.Status, &vigIni, &vigFim,
 			&c.ValidaNoApp, &c.ValidaNoPostoFisico,
+			&c.TipoBeneficio,
 			&c.ModalidadeDesconto, &c.BaseDesconto,
 			&c.ValorDesconto, &c.ValorMinimoCompra, &vMaxCompra,
 			&maxUsos,
@@ -205,6 +207,7 @@ SELECT
   c.vigencia_fim,
   c.valida_no_app,
   c.valida_no_posto_fisico,
+  c.tipo_beneficio,
   c.modalidade_desconto,
   c.base_desconto,
   c.valor_desconto::float8,
@@ -228,6 +231,7 @@ LIMIT 1`
 		&c.ID, &c.IDRede, &c.Nome, &c.Titulo, &c.Descricao, &c.ImagemURL,
 		&c.IDPosto, &c.Status, &vigIni, &vigFim,
 		&c.ValidaNoApp, &c.ValidaNoPostoFisico,
+		&c.TipoBeneficio,
 		&c.ModalidadeDesconto, &c.BaseDesconto,
 		&c.ValorDesconto, &c.ValorMinimoCompra, &vMaxCompra,
 		&maxUsos,
@@ -355,14 +359,14 @@ INSERT INTO campanhas (
   rede_id, nome, descricao, status, criado_por,
   imagem_url, titulo, posto_id, vigencia_inicio, vigencia_fim,
   valida_no_app, valida_no_posto_fisico,
-  modalidade_desconto, base_desconto, valor_desconto, valor_minimo_compra, valor_maximo_compra, max_usos_por_cliente,
+  tipo_beneficio, modalidade_desconto, base_desconto, valor_desconto, valor_minimo_compra, valor_maximo_compra, max_usos_por_cliente,
   litros_min, litros_max
 )
 VALUES (
   $1::uuid, $2, NULLIF($3, ''), $4::status_campanha, $5::uuid,
   NULLIF($6, ''), NULLIF($7, ''), $8, $9, $10,
-  $11, $12, $13, $14, $15, $16, $17, $18,
-  $19, $20
+  $11, $12, $13, $14, $15, $16, $17, $18, $19,
+  $20, $21
 )
 RETURNING id::text, criado_em, atualizado_em`
 
@@ -381,13 +385,15 @@ RETURNING id::text, criado_em, atualizado_em`
 		vigFim,
 		c.ValidaNoApp,
 		c.ValidaNoPostoFisico,
+		strings.TrimSpace(c.TipoBeneficio),
 		strings.TrimSpace(c.ModalidadeDesconto),
 		strings.TrimSpace(c.BaseDesconto),
 		c.ValorDesconto,
 		c.ValorMinimoCompra,
 		vMax,
 		maxUsos,
-		litMin, litMax,
+		litMin,
+		litMax,
 	).Scan(&c.ID, &c.CriadoEm, &c.AtualizadoEm)
 	if err != nil {
 		return err
@@ -456,16 +462,17 @@ UPDATE campanhas SET
   vigencia_fim = $8,
   valida_no_app = $9,
   valida_no_posto_fisico = $10,
-  modalidade_desconto = $11,
-  base_desconto = $12,
-  valor_desconto = $13,
-  valor_minimo_compra = $14,
-  valor_maximo_compra = $15,
-  max_usos_por_cliente = $16,
-  litros_min = $17,
-  litros_max = $18,
+  tipo_beneficio = $11,
+  modalidade_desconto = $12,
+  base_desconto = $13,
+  valor_desconto = $14,
+  valor_minimo_compra = $15,
+  valor_maximo_compra = $16,
+  max_usos_por_cliente = $17,
+  litros_min = $18,
+  litros_max = $19,
   atualizado_em = NOW()
-WHERE id = $19::uuid AND rede_id = $20::uuid`
+WHERE id = $20::uuid AND rede_id = $21::uuid`
 
 	res, err := tx.ExecContext(
 		ctx,
@@ -480,13 +487,15 @@ WHERE id = $19::uuid AND rede_id = $20::uuid`
 		vigFim,
 		c.ValidaNoApp,
 		c.ValidaNoPostoFisico,
+		strings.TrimSpace(c.TipoBeneficio),
 		strings.TrimSpace(c.ModalidadeDesconto),
 		strings.TrimSpace(c.BaseDesconto),
 		c.ValorDesconto,
 		c.ValorMinimoCompra,
 		vMax,
 		maxUsos,
-		litMin, litMax,
+		litMin,
+		litMax,
 		strings.TrimSpace(c.ID),
 		strings.TrimSpace(c.IDRede),
 	)

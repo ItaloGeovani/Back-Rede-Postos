@@ -196,7 +196,7 @@ func Nova() (*Aplicacao, error) {
 	svcGireGanhe := servicos.NovoServicoGireGanhe(banco, repoGireGanhe, repoCarteira, svcNiveisCliente, svcUsuarioRede)
 	svcPosto := servicos.NovoServicoPosto(repoPosto, repoRede)
 	svcCampanha := servicos.NovoServicoCampanha(repoCampanha, repoRede, repoCombustivelRede)
-	svcVoucherCompra := servicos.NovoServicoVoucherCompra(repoVoucherCompra, svcCampanha, repoMercadoPagoGateway, repoRede, repoCombustivelRede, repoUsuarioRede, cfg, svcIndiqueGanhe)
+	svcVoucherCompra := servicos.NovoServicoVoucherCompra(repoVoucherCompra, svcCampanha, repoMercadoPagoGateway, repoRede, repoCarteira, repoCombustivelRede, repoUsuarioRede, cfg, svcIndiqueGanhe)
 	svcCombustivelRede := servicos.NovoServicoCombustivelRede(repoCombustivelRede, repoRede)
 	svcPremio := servicos.NovoServicoPremio(repoPremio, repoRede)
 	if err := bootstrapAdminPadrao(cfg, svcAdmin); err != nil {

@@ -34,6 +34,10 @@ type VoucherCompraRegistro struct {
 	ValorSolicitado     float64    `json:"valor_solicitado"`
 	DescontoAplicado    float64    `json:"desconto_aplicado"`
 	ValorFinal          float64    `json:"valor_final"`
+	TipoBeneficio       string     `json:"tipo_beneficio,omitempty"`
+	CashbackPercentual  float64    `json:"cashback_percentual,omitempty"`
+	CashbackValor       float64    `json:"cashback_valor,omitempty"`
+	CashbackCreditadoEm *time.Time `json:"cashback_creditado_em,omitempty"`
 	Litros              *float64   `json:"litros,omitempty"`
 	CombustivelRedeID   *string    `json:"id_combustivel_rede,omitempty"`
 	CombustivelRedeNome string     `json:"combustivel_rede_nome,omitempty"`
@@ -100,6 +104,7 @@ type VoucherCompraRepositorio interface {
 	ListarUsosAprovadosPorCampanha(redeID, usuarioID string) (map[string]int, error)
 	BuscarPorIDRede(id, redeID string) (*VoucherCompraRegistro, error)
 	AtivarPagamentoAprovado(id, redeID, codigo string, expiraResgate time.Time) error
+	MarcarCashbackCreditado(id, redeID string, creditadoEm time.Time) (bool, error)
 	// BuscarPorCodigoResgateConsultaEquipe voucher da rede por código de resgate + dados do cliente (nome/e-mail).
 	BuscarPorCodigoResgateConsultaEquipe(codigo, redeID string) (*VoucherCompraConsultaEquipe, error)
 	// RegistrarBaixaUso marca ATIVO como USADO com posto e operador (frentista/gerente/gestor).

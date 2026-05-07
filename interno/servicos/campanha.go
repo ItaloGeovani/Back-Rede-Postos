@@ -29,6 +29,7 @@ type CriarCampanhaInput struct {
 	Status                modelos.StatusCampanha
 	ValidaNoApp           bool
 	ValidaNoPostoFisico   bool
+	TipoBeneficio         string
 	ModalidadeDesconto    string
 	BaseDesconto          string
 	ValorDesconto         float64
@@ -53,6 +54,7 @@ type AtualizarCampanhaInput struct {
 	Status              modelos.StatusCampanha
 	ValidaNoApp         bool
 	ValidaNoPostoFisico bool
+	TipoBeneficio       string
 	ModalidadeDesconto  string
 	BaseDesconto        string
 	ValorDesconto         float64
@@ -128,6 +130,14 @@ func normalizarBase(s string) string {
 	return modelos.BaseDescontoValorCompra
 }
 
+func normalizarTipoBeneficio(s string) string {
+	s = strings.ToUpper(strings.TrimSpace(s))
+	if s == modelos.TipoBeneficioCashback {
+		return modelos.TipoBeneficioCashback
+	}
+	return modelos.TipoBeneficioDesconto
+}
+
 // validarFaixaValorCompra exige piso e teto em R$ para base VALOR_COMPRA (teto >= piso).
 func validarFaixaValorCompra(vmin float64, vmax *float64) bool {
 	if math.IsNaN(vmin) || math.IsInf(vmin, 0) || vmin < 0 {
@@ -141,7 +151,7 @@ func validarFaixaValorCompra(vmin float64, vmax *float64) bool {
 
 func validarDescontoEUso(
 	validaApp, validaPosto bool,
-	mod, base string,
+	tipoBeneficio, mod, base string,
 	valorDesc, vmin float64,
 	maxUsos *int,
 ) bool {
@@ -173,6 +183,11 @@ func validarDescontoEUso(
 		}
 	default:
 		return false
+	}
+	if tipoBeneficio == modelos.TipoBeneficioCashback {
+		if mod != modelos.ModalidadeDescontoPercentual {
+			return false
+		}
 	}
 	switch base {
 	case modelos.BaseDescontoValorCompra, modelos.BaseDescontoLitro:
@@ -248,6 +263,7 @@ func (s *servicoCampanha) Criar(sessaoCriador string, in CriarCampanhaInput) (*m
 		return nil, ErrDadosInvalidos
 	}
 	mod := normalizarModalidade(in.ModalidadeDesconto)
+	tipoBeneficio := normalizarTipoBeneficio(in.TipoBeneficio)
 	base := normalizarBase(in.BaseDesconto)
 	valor := in.ValorDesconto
 	if mod == modelos.ModalidadeDescontoNenhum {
@@ -303,7 +319,7 @@ func (s *servicoCampanha) Criar(sessaoCriador string, in CriarCampanhaInput) (*m
 			return nil, ErrDadosInvalidos
 		}
 	}
-	if !validarDescontoEUso(in.ValidaNoApp, in.ValidaNoPostoFisico, mod, base, valor, vminUse, in.MaxUsosPorCliente) {
+	if !validarDescontoEUso(in.ValidaNoApp, in.ValidaNoPostoFisico, tipoBeneficio, mod, base, valor, vminUse, in.MaxUsosPorCliente) {
 		return nil, ErrDadosInvalidos
 	}
 
@@ -333,6 +349,7 @@ func (s *servicoCampanha) Criar(sessaoCriador string, in CriarCampanhaInput) (*m
 		VigenciaFim:          in.VigenciaFim,
 		ValidaNoApp:          in.ValidaNoApp,
 		ValidaNoPostoFisico:  in.ValidaNoPostoFisico,
+		TipoBeneficio:        tipoBeneficio,
 		ModalidadeDesconto:   mod,
 		BaseDesconto:         base,
 		ValorDesconto:        valor,
@@ -362,6 +379,7 @@ func (s *servicoCampanha) Atualizar(in AtualizarCampanhaInput) error {
 		return ErrDadosInvalidos
 	}
 	mod := normalizarModalidade(in.ModalidadeDesconto)
+	tipoBeneficio := normalizarTipoBeneficio(in.TipoBeneficio)
 	base := normalizarBase(in.BaseDesconto)
 	valor := in.ValorDesconto
 	if mod == modelos.ModalidadeDescontoNenhum {
@@ -417,7 +435,7 @@ func (s *servicoCampanha) Atualizar(in AtualizarCampanhaInput) error {
 			return ErrDadosInvalidos
 		}
 	}
-	if !validarDescontoEUso(in.ValidaNoApp, in.ValidaNoPostoFisico, mod, base, valor, vminUse, in.MaxUsosPorCliente) {
+	if !validarDescontoEUso(in.ValidaNoApp, in.ValidaNoPostoFisico, tipoBeneficio, mod, base, valor, vminUse, in.MaxUsosPorCliente) {
 		return ErrDadosInvalidos
 	}
 
@@ -448,6 +466,7 @@ func (s *servicoCampanha) Atualizar(in AtualizarCampanhaInput) error {
 		VigenciaFim:         in.VigenciaFim,
 		ValidaNoApp:         in.ValidaNoApp,
 		ValidaNoPostoFisico: in.ValidaNoPostoFisico,
+		TipoBeneficio:       tipoBeneficio,
 		ModalidadeDesconto:  mod,
 		BaseDesconto:        base,
 		ValorDesconto:       valor,
