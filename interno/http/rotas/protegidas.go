@@ -11,6 +11,7 @@ import (
 func RegistrarProtegidas(muxPrincipal *http.ServeMux, h *handlers.Handlers, aut servicos.Autenticador, mws ...middlewares.Middleware) {
 	muxProtegida := http.NewServeMux()
 	muxProtegida.Handle("/v1/eu/perfil", http.HandlerFunc(h.PerfilLogado))
+	muxProtegida.Handle("/v1/eu/app/presenca", http.HandlerFunc(h.PostEuAppPresenca))
 	muxProtegida.Handle("/v1/eu/indique-ganhe", http.HandlerFunc(h.GetEuIndiqueGanhe))
 	muxProtegida.Handle("/v1/eu/checkin-diario", http.HandlerFunc(h.CheckinDiarioEU))
 	muxProtegida.Handle("/v1/eu/gire-ganhe", http.HandlerFunc(h.GireGanheEU))

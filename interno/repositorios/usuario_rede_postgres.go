@@ -20,6 +20,20 @@ type DiagnosticoPushRedeStats struct {
 	TokensDistintos     int `json:"tokens_fcm_distintos"`
 }
 
+// ClientePresencaAppItem cliente da rede com dados cadastrais e ultimo heartbeat do app.
+type ClientePresencaAppItem struct {
+	IDUsuario           string     `json:"id_usuario"`
+	NomeCompleto        string     `json:"nome_completo"`
+	Email               string     `json:"email"`
+	Telefone            string     `json:"telefone"`
+	CPF                 string     `json:"cpf"`
+	NivelCliente        string     `json:"nivel_cliente"`
+	Ativo               bool       `json:"ativo"`
+	UltimoAppAcessoEm   *time.Time `json:"ultimo_app_acesso_em,omitempty"`
+	UltimoAppPlataforma string     `json:"ultimo_app_plataforma,omitempty"`
+	ProvavelmenteOnline bool       `json:"provavelmente_online_agora"`
+}
+
 type usuarioRedePostgres struct {
 	db *sql.DB
 }
@@ -43,6 +57,9 @@ var ErrCPFJaCadastradoNaRede = errors.New("cpf ja cadastrado nesta rede")
 
 // ErrContaClienteExclusaoNaoAplicada quando o usuario nao e cliente ou nao existe na rede.
 var ErrContaClienteExclusaoNaoAplicada = errors.New("conta nao encontrada ou nao e cliente")
+
+// errPresencaParamsInvalidos parametros obrigatorios ausentes em presenca do app.
+var errPresencaParamsInvalidos = errors.New("parametros invalidos para presenca")
 
 // ErrPostoNaoPertenceARede quando id_posto nao e da rede informada.
 var ErrPostoNaoPertenceARede = errors.New("posto nao pertence a esta rede")
@@ -731,6 +748,112 @@ WHERE id = $1::uuid AND rede_id = $2::uuid AND papel = 'cliente'::papel_usuario`
 		return "", nil
 	}
 	return strings.TrimSpace(cod.String), nil
+}
+
+// RegistrarPresencaAppCliente atualiza ultimo_acesso do app para cliente da rede.
+func (r *usuarioRedePostgres) RegistrarPresencaAppCliente(idUsuario, idRede, plataforma string) error {
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	idUsuario = strings.TrimSpace(idUsuario)
+	idRede = strings.TrimSpace(idRede)
+	if idUsuario == "" || idRede == "" {
+		return errPresencaParamsInvalidos
+	}
+	pl := strings.TrimSpace(strings.ToLower(plataforma))
+	if len(pl) > 48 {
+		pl = pl[:48]
+	}
+	const q = `
+UPDATE usuarios
+SET ultimo_app_acesso_em = NOW(),
+    ultimo_app_plataforma = NULLIF($3::text, '')
+WHERE id = $1::uuid AND rede_id = $2::uuid AND papel = 'cliente'::papel_usuario`
+	res, err := r.db.ExecContext(ctx, q, idUsuario, idRede, pl)
+	if err != nil {
+		return err
+	}
+	n, err := res.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if n == 0 {
+		return sql.ErrNoRows
+	}
+	return nil
+}
+
+// ListarClientesPresencaAppPorRede lista clientes ordenados pelo ultimo app heartbeat (NULL por ultimo).
+func (r *usuarioRedePostgres) ListarClientesPresencaAppPorRede(idRede string, limite, minutosOnline int) (totalClientes, totalComPresenca int, itens []ClientePresencaAppItem, err error) {
+	ctx, cancel := context.WithTimeout(context.Background(), 8*time.Second)
+	defer cancel()
+	idRede = strings.TrimSpace(idRede)
+	if idRede == "" {
+		err = errPresencaParamsInvalidos
+		return
+	}
+	if limite < 1 {
+		limite = 200
+	}
+	if limite > 500 {
+		limite = 500
+	}
+	if minutosOnline < 1 {
+		minutosOnline = 15
+	}
+	if minutosOnline > 180 {
+		minutosOnline = 180
+	}
+
+	err = r.db.QueryRowContext(ctx, `
+SELECT COUNT(*),
+       COUNT(*) FILTER (WHERE ultimo_app_acesso_em IS NOT NULL)
+FROM usuarios
+WHERE rede_id = $1::uuid AND papel = 'cliente'::papel_usuario`, idRede).Scan(&totalClientes, &totalComPresenca)
+	if err != nil {
+		return
+	}
+
+	threshold := time.Now().Add(-time.Duration(minutosOnline) * time.Minute)
+
+	rows, err := r.db.QueryContext(ctx, `
+SELECT
+  u.id::text,
+  u.nome_completo,
+  u.email,
+  COALESCE(u.telefone, ''),
+  COALESCE(u.cpf, ''),
+  COALESCE(NULLIF(TRIM(LOWER(u.nivel_cliente)), ''), 'bronze'),
+  u.ativo,
+  u.ultimo_app_acesso_em,
+  COALESCE(NULLIF(TRIM(LOWER(u.ultimo_app_plataforma)), ''), '')
+FROM usuarios u
+WHERE u.rede_id = $1::uuid AND u.papel = 'cliente'::papel_usuario
+ORDER BY u.ultimo_app_acesso_em DESC NULLS LAST
+LIMIT $2`, idRede, limite)
+	if err != nil {
+		return
+	}
+	defer rows.Close()
+
+	for rows.Next() {
+		var it ClientePresencaAppItem
+		var ts sql.NullTime
+		var plat string
+		if err = rows.Scan(&it.IDUsuario, &it.NomeCompleto, &it.Email, &it.Telefone, &it.CPF, &it.NivelCliente, &it.Ativo, &ts, &plat); err != nil {
+			return
+		}
+		if ts.Valid {
+			t := ts.Time.UTC()
+			it.UltimoAppAcessoEm = &t
+			if !ts.Time.Before(threshold) {
+				it.ProvavelmenteOnline = true
+			}
+		}
+		it.UltimoAppPlataforma = plat
+		itens = append(itens, it)
+	}
+	err = rows.Err()
+	return
 }
 
 // BuscarIdClientePorCodigoIndicacao retorna o id do cliente dono do codigo na rede; vazio se nao existir.

@@ -1,6 +1,7 @@
 package servicos
 
 import (
+	"database/sql"
 	"errors"
 	"fmt"
 	"strings"
@@ -15,6 +16,9 @@ const (
 	usuarioRedeLimiteMaximo  = 100
 	usuarioRedeLimiteMinimo  = 1
 )
+
+// ErrPresencaClienteNaoAplicavel conta nao e cliente na rede ou nao existe.
+var ErrPresencaClienteNaoAplicavel = errors.New("presenca nao aplicavel a esta conta")
 
 type ServicoUsuarioRede interface {
 	ListarPorRedeIDPaginado(idRede string, limite, offset int, papeisFiltro []string, idPostoFiltro string) ([]*modelos.UsuarioVinculoRede, int, int, int, error)
@@ -35,6 +39,10 @@ type ServicoUsuarioRede interface {
 	// ListarTokensFCMClientesRede tokens FCM de todos os clientes ativos da rede (push em massa).
 	ListarTokensFCMClientesRede(idRede string) ([]string, error)
 	DiagnosticoPushRede(idRede string) (*repositorios.DiagnosticoPushRedeStats, error)
+	// RegistrarPresencaAppCliente heartbeat do app (cliente): atualiza ultima atividade.
+	RegistrarPresencaAppCliente(idUsuario, idRede, plataforma string) error
+	// ListarPresencaClientesRede clientes com dados cadastrais e ultimo app heartbeat (painel gestor/gerente).
+	ListarPresencaClientesRede(idRede string, limite, minutosOnline int) (totalClientes, totalComPresenca int, itens []repositorios.ClientePresencaAppItem, err error)
 }
 
 // CriarUsuarioEquipeInput cadastro de gerente de posto ou frentista pelo admin global.
@@ -99,6 +107,8 @@ type usuarioRedePostgresRepo interface {
 	DefinirCodigoIndicacao(idUsuario, idRede, codigo string) error
 	ObterCodigoIndicacao(idUsuario, idRede string) (string, error)
 	BuscarIdClientePorCodigoIndicacao(idRede, codigo string) (string, error)
+	RegistrarPresencaAppCliente(idUsuario, idRede, plataforma string) error
+	ListarClientesPresencaAppPorRede(idRede string, limite, minutosOnline int) (totalClientes, totalComPresenca int, itens []repositorios.ClientePresencaAppItem, err error)
 }
 
 type servicoUsuarioRede struct {
@@ -399,4 +409,25 @@ func (s *servicoUsuarioRede) ListarTokensFCMClientesRede(idRede string) ([]strin
 
 func (s *servicoUsuarioRede) DiagnosticoPushRede(idRede string) (*repositorios.DiagnosticoPushRedeStats, error) {
 	return s.repoUsuarios.DiagnosticoPushRede(strings.TrimSpace(idRede))
+}
+
+func (s *servicoUsuarioRede) RegistrarPresencaAppCliente(idUsuario, idRede, plataforma string) error {
+	idUsuario = strings.TrimSpace(idUsuario)
+	idRede = strings.TrimSpace(idRede)
+	if idUsuario == "" || idRede == "" {
+		return ErrDadosInvalidos
+	}
+	err := s.repoUsuarios.RegistrarPresencaAppCliente(idUsuario, idRede, plataforma)
+	if errors.Is(err, sql.ErrNoRows) {
+		return ErrPresencaClienteNaoAplicavel
+	}
+	return err
+}
+
+func (s *servicoUsuarioRede) ListarPresencaClientesRede(idRede string, limite, minutosOnline int) (totalClientes, totalComPresenca int, itens []repositorios.ClientePresencaAppItem, err error) {
+	idRede = strings.TrimSpace(idRede)
+	if idRede == "" {
+		return 0, 0, nil, ErrDadosInvalidos
+	}
+	return s.repoUsuarios.ListarClientesPresencaAppPorRede(idRede, limite, minutosOnline)
 }

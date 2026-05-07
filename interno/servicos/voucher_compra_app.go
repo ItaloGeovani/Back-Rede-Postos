@@ -99,7 +99,7 @@ type ResultadoCalcularVoucher struct {
 	ValorSolicitado  float64  `json:"valor_solicitado"`
 	DescontoAplicado float64  `json:"desconto_aplicado"`
 	ValorFinal       float64  `json:"valor_final"`
-	TipoBeneficio    string   `json:"tipo_beneficio,omitempty"`
+	TipoBeneficio    string   `json:"tipo_beneficio"`
 	CashbackPercentual float64 `json:"cashback_percentual,omitempty"`
 	CashbackPrevisto float64  `json:"cashback_previsto,omitempty"`
 	Litros           *float64 `json:"litros,omitempty"`

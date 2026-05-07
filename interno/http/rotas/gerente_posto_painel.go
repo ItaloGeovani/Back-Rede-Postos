@@ -20,6 +20,7 @@ func RegistrarGerentePostoPainel(muxPrincipal *http.ServeMux, h *handlers.Handle
 	mux.Handle("/v1/gerente-posto/dev/premios/listar", http.HandlerFunc(h.ListarPremiosGestorRede))
 	mux.Handle("/v1/gerente-posto/dev/premios/criar", http.HandlerFunc(h.CriarPremioGestorRede))
 	mux.Handle("/v1/gerente-posto/dev/premios/editar", http.HandlerFunc(h.EditarPremioGestorRede))
+	mux.Handle("/v1/gerente-posto/dev/clientes/presenca-app", http.HandlerFunc(h.ListarClientesPresencaAppPainel))
 	mux.Handle("/v1/gerente-posto/dev/usuarios-rede/listar", http.HandlerFunc(h.ListarUsuariosRedeGestor))
 	mux.Handle("/v1/gerente-posto/dev/usuarios-rede/criar-equipe", http.HandlerFunc(h.CriarUsuarioEquipeGestorRede))
 	mux.Handle("/v1/gerente-posto/dev/usuarios-rede/editar-equipe", http.HandlerFunc(h.EditarUsuarioEquipeGestorRede))
