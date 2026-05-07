@@ -6,6 +6,7 @@ import (
 	"strconv"
 	"strings"
 
+	"gaspass-servidor/interno/modelos"
 	"gaspass-servidor/interno/repositorios"
 	"gaspass-servidor/interno/servicos"
 	"gaspass-servidor/utils"
@@ -209,12 +210,15 @@ func (h *Handlers) LoginUsuarioRedePainelDev(w http.ResponseWriter, r *http.Requ
 		return
 	}
 	req.IDRede = strings.TrimSpace(req.IDRede)
-	if req.IDRede == "" {
-		utils.ResponderErro(w, http.StatusBadRequest, "id_rede e obrigatorio")
-		return
-	}
 
-	token, sessao, err := h.usuarioRedeService.LoginPainelNaRede(req.Email, req.Senha, req.IDRede)
+	var token string
+	var sessao *modelos.UsuarioSessao
+	var err error
+	if req.IDRede == "" {
+		token, sessao, err = h.usuarioRedeService.LoginPainel(req.Email, req.Senha)
+	} else {
+		token, sessao, err = h.usuarioRedeService.LoginPainelNaRede(req.Email, req.Senha, req.IDRede)
+	}
 	if err != nil {
 		switch {
 		case errors.Is(err, servicos.ErrDadosInvalidos):

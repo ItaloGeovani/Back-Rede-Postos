@@ -16,6 +16,7 @@ type ServicoGestorRede interface {
 	EditarComPlano(req EditarGestorComPlanoInput) (*modelos.GestorRede, []string, error)
 	Contar() (total int, ativos int, err error)
 	Login(email, senha string) (string, *modelos.UsuarioSessao, error)
+	ExisteGestorPorEmail(email string) (bool, error)
 }
 
 type CriarGestorComPlanoInput struct {
@@ -154,6 +155,10 @@ func (s *servicoGestorRede) EditarComPlano(req EditarGestorComPlanoInput) (*mode
 
 func (s *servicoGestorRede) Contar() (int, int, error) {
 	return s.repoGestor.Contar()
+}
+
+func (s *servicoGestorRede) ExisteGestorPorEmail(email string) (bool, error) {
+	return s.repoGestor.ExisteGestorPorEmail(strings.TrimSpace(email))
 }
 
 func (s *servicoGestorRede) Login(email, senha string) (string, *modelos.UsuarioSessao, error) {

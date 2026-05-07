@@ -9,17 +9,6 @@ import (
 	"gaspass-servidor/utils"
 )
 
-const emailCompatibilidadeLoja = "teste@apc.com"
-
-func isEmailCompatibilidadeLoja(email string) bool {
-	return strings.EqualFold(strings.TrimSpace(email), emailCompatibilidadeLoja)
-}
-
-func isLoginPainelWeb(r *http.Request) bool {
-	v := strings.TrimSpace(r.Header.Get("X-Painel-Web"))
-	return v == "1" || strings.EqualFold(v, "true")
-}
-
 type reqLoginPainelUnificado struct {
 	IDRede string `json:"id_rede"`
 	Email  string `json:"email"`
@@ -64,8 +53,9 @@ func (h *Handlers) Login(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-// LoginPainelUnificadoDev tenta, na ordem: administrador geral, gestor da rede, usuario da equipe (gerente/frentista).
-// Uma unica requisicao HTTP evita 401 espurio no navegador para quem nao e admin.
+// LoginPainelUnificadoDev tenta, na ordem: administrador geral, gestor da rede, equipe/cliente no painel.
+// Corpo tipico: apenas email e senha; rede e posto vêm do registro encontrado no banco.
+// id_rede no JSON e opcional: quando informado, restringe equipe/cliente àquela rede (mesmo email em varias redes).
 func (h *Handlers) LoginPainelUnificadoDev(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		utils.ResponderErro(w, http.StatusMethodNotAllowed, "metodo nao permitido")
@@ -117,14 +107,18 @@ func (h *Handlers) LoginPainelUnificadoDev(w http.ResponseWriter, r *http.Reques
 		return
 	}
 
+	// Email cadastrado como gestor, mas senha inativa/incorreta: não tentar equipe/cliente.
+	existeGestor, errGestor := h.gestorService.ExisteGestorPorEmail(req.Email)
+	if errGestor != nil {
+		utils.ResponderErro(w, http.StatusInternalServerError, "falha ao autenticar gestor da rede")
+		return
+	}
+	if existeGestor {
+		utils.ResponderErro(w, http.StatusUnauthorized, servicos.ErrCredenciais.Error())
+		return
+	}
+
 	if req.IDRede == "" {
-		// Compatibilidade para revisão de loja (Google Play / App Store):
-		// versões antigas não enviam id_rede no login.
-		// Para o painel web unificado, também permitimos fallback sem id_rede.
-		if !isEmailCompatibilidadeLoja(req.Email) && !isLoginPainelWeb(r) {
-			utils.ResponderErro(w, http.StatusBadRequest, "id_rede e obrigatorio para login na rede")
-			return
-		}
 		token, sessao, err = h.usuarioRedeService.LoginPainel(req.Email, req.Senha)
 	} else {
 		token, sessao, err = h.usuarioRedeService.LoginPainelNaRede(req.Email, req.Senha, req.IDRede)

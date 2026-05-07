@@ -211,6 +211,33 @@ LIMIT 1`
 	return gestor, nil
 }
 
+func (r *gestorRedePostgres) ExisteGestorPorEmail(email string) (bool, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	email = strings.TrimSpace(email)
+	if email == "" {
+		return false, nil
+	}
+
+	const query = `
+SELECT 1
+FROM usuarios
+WHERE papel = 'gestor_rede'
+  AND LOWER(TRIM(email)) = LOWER(TRIM($1))
+LIMIT 1`
+
+	var um int
+	err := r.db.QueryRowContext(ctx, query, email).Scan(&um)
+	if errors.Is(err, sql.ErrNoRows) {
+		return false, nil
+	}
+	if err != nil {
+		return false, err
+	}
+	return true, nil
+}
+
 func (r *gestorRedePostgres) Contar() (int, int, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()

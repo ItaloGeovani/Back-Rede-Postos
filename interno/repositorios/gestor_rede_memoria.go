@@ -21,6 +21,7 @@ type GestorRedeRepositorio interface {
 	Contar() (total int, ativos int, err error)
 	// BuscarPorEmailParaLogin retorna o registro com SenhaHash preenchido (uso interno / autenticacao).
 	BuscarPorEmailParaLogin(email string) (*modelos.GestorRede, error)
+	ExisteGestorPorEmail(email string) (bool, error)
 }
 
 type gestorRedeMemoria struct {
@@ -115,6 +116,14 @@ func (r *gestorRedeMemoria) Contar() (int, int, error) {
 		}
 	}
 	return total, ativos, nil
+}
+
+func (r *gestorRedeMemoria) ExisteGestorPorEmail(email string) (bool, error) {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+
+	_, ok := r.porMail[normalizarEmailGestor(email)]
+	return ok, nil
 }
 
 func (r *gestorRedeMemoria) BuscarPorEmailParaLogin(email string) (*modelos.GestorRede, error) {
