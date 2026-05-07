@@ -12,8 +12,9 @@ import (
 )
 
 type reqLoginUsuarioPainel struct {
-	Email string `json:"email"`
-	Senha string `json:"senha"`
+	IDRede string `json:"id_rede"`
+	Email  string `json:"email"`
+	Senha  string `json:"senha"`
 }
 
 type reqCriarUsuarioEquipe struct {
@@ -207,8 +208,13 @@ func (h *Handlers) LoginUsuarioRedePainelDev(w http.ResponseWriter, r *http.Requ
 		utils.ResponderErro(w, http.StatusBadRequest, "payload invalido")
 		return
 	}
+	req.IDRede = strings.TrimSpace(req.IDRede)
+	if req.IDRede == "" {
+		utils.ResponderErro(w, http.StatusBadRequest, "id_rede e obrigatorio")
+		return
+	}
 
-	token, sessao, err := h.usuarioRedeService.LoginPainel(req.Email, req.Senha)
+	token, sessao, err := h.usuarioRedeService.LoginPainelNaRede(req.Email, req.Senha, req.IDRede)
 	if err != nil {
 		switch {
 		case errors.Is(err, servicos.ErrDadosInvalidos):

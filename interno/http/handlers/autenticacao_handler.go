@@ -3,14 +3,22 @@ package handlers
 import (
 	"errors"
 	"net/http"
+	"strings"
 
 	"gaspass-servidor/interno/servicos"
 	"gaspass-servidor/utils"
 )
 
+const emailCompatibilidadeLoja = "teste@apc.com"
+
+func isEmailCompatibilidadeLoja(email string) bool {
+	return strings.EqualFold(strings.TrimSpace(email), emailCompatibilidadeLoja)
+}
+
 type reqLoginPainelUnificado struct {
-	Email string `json:"email"`
-	Senha string `json:"senha"`
+	IDRede string `json:"id_rede"`
+	Email  string `json:"email"`
+	Senha  string `json:"senha"`
 }
 
 func (h *Handlers) Login(w http.ResponseWriter, r *http.Request) {
@@ -64,6 +72,7 @@ func (h *Handlers) LoginPainelUnificadoDev(w http.ResponseWriter, r *http.Reques
 		utils.ResponderErro(w, http.StatusBadRequest, "payload invalido")
 		return
 	}
+	req.IDRede = strings.TrimSpace(req.IDRede)
 
 	token, sessao, err := h.adminService.Login(req.Email, req.Senha)
 	if err == nil {
@@ -103,7 +112,17 @@ func (h *Handlers) LoginPainelUnificadoDev(w http.ResponseWriter, r *http.Reques
 		return
 	}
 
-	token, sessao, err = h.usuarioRedeService.LoginPainel(req.Email, req.Senha)
+	if req.IDRede == "" {
+		// Compatibilidade para revisão de loja (Google Play / App Store):
+		// versões antigas não enviam id_rede no login.
+		if !isEmailCompatibilidadeLoja(req.Email) {
+			utils.ResponderErro(w, http.StatusBadRequest, "id_rede e obrigatorio para login na rede")
+			return
+		}
+		token, sessao, err = h.usuarioRedeService.LoginPainel(req.Email, req.Senha)
+	} else {
+		token, sessao, err = h.usuarioRedeService.LoginPainelNaRede(req.Email, req.Senha, req.IDRede)
+	}
 	if err != nil {
 		switch {
 		case errors.Is(err, servicos.ErrDadosInvalidos):

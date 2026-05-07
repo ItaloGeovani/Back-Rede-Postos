@@ -21,6 +21,7 @@ type ServicoUsuarioRede interface {
 	CriarUsuarioEquipe(in CriarUsuarioEquipeInput) (*modelos.UsuarioVinculoRede, error)
 	EditarUsuarioEquipe(in EditarUsuarioEquipeInput) (*modelos.UsuarioVinculoRede, error)
 	LoginPainel(email, senha string) (string, *modelos.UsuarioSessao, error)
+	LoginPainelNaRede(email, senha, idRede string) (string, *modelos.UsuarioSessao, error)
 	CadastrarClienteApp(in CadastroClienteAppInput) (string, *modelos.UsuarioSessao, error)
 	ExcluirContaClienteApp(idUsuario, idRede string) error
 	// EmailECPFPorUsuarioRede e-mail e CPF cadastrados (app / pagamento).
@@ -86,6 +87,7 @@ type usuarioRedePostgresRepo interface {
 	ExcluirContaClientePorID(idUsuario, idRede string) error
 	AtualizarUsuarioEquipe(idRede, idUsuario string, nome, email, telefone string, ativo bool, papel, idPosto, senhaHashOuVazio string) (*modelos.UsuarioVinculoRede, error)
 	BuscarPorEmailParaLoginPainel(email string) (*repositorios.UsuarioPainelLogin, error)
+	BuscarPorEmailParaLoginPainelNaRede(idRede, email string) (*repositorios.UsuarioPainelLogin, error)
 	PostoPertenceARede(idPosto, idRede string) (bool, error)
 	EmailECPFPorUsuarioRede(idUsuario, idRede string) (email string, cpf string, err error)
 	ObterNivelCliente(idUsuario, idRede string) (string, error)
@@ -250,6 +252,37 @@ func (s *servicoUsuarioRede) LoginPainel(email, senha string) (string, *modelos.
 	}
 
 	u, err := s.repoUsuarios.BuscarPorEmailParaLoginPainel(email)
+	if err != nil {
+		if errors.Is(err, repositorios.ErrUsuarioPainelLoginNaoEncontrado) {
+			return "", nil, ErrCredenciais
+		}
+		return "", nil, err
+	}
+	if !u.Ativo || u.SenhaHash != utils.GerarHashSHA256(senha) {
+		return "", nil, ErrCredenciais
+	}
+
+	p := modelos.Papel(strings.TrimSpace(u.Papel))
+	sessao := &modelos.UsuarioSessao{
+		IDUsuario:    u.ID,
+		NomeCompleto: u.Nome,
+		IDRede:       u.IDRede,
+		IDPosto:      u.IDPosto,
+		Papel:        p,
+	}
+	token := s.auth.CriarSessao(sessao)
+	return token, sessao, nil
+}
+
+func (s *servicoUsuarioRede) LoginPainelNaRede(email, senha, idRede string) (string, *modelos.UsuarioSessao, error) {
+	email = strings.TrimSpace(email)
+	senha = strings.TrimSpace(senha)
+	idRede = strings.TrimSpace(idRede)
+	if email == "" || senha == "" || idRede == "" {
+		return "", nil, ErrDadosInvalidos
+	}
+
+	u, err := s.repoUsuarios.BuscarPorEmailParaLoginPainelNaRede(idRede, email)
 	if err != nil {
 		if errors.Is(err, repositorios.ErrUsuarioPainelLoginNaoEncontrado) {
 			return "", nil, ErrCredenciais

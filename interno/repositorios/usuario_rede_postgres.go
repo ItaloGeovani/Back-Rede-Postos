@@ -546,6 +546,52 @@ LIMIT 1`
 	return &row, nil
 }
 
+// BuscarPorEmailParaLoginPainelNaRede localiza um usuario pelo email dentro de uma rede especifica.
+func (r *usuarioRedePostgres) BuscarPorEmailParaLoginPainelNaRede(idRede, email string) (*UsuarioPainelLogin, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	idRede = strings.TrimSpace(idRede)
+	email = strings.TrimSpace(email)
+	if idRede == "" || email == "" {
+		return nil, ErrUsuarioPainelLoginNaoEncontrado
+	}
+
+	const query = `
+SELECT
+  u.id::text,
+  u.rede_id::text,
+  COALESCE(u.posto_id::text, ''),
+  u.papel::text,
+  u.nome_completo,
+  u.senha_hash,
+  u.ativo
+FROM usuarios u
+WHERE u.rede_id = $1::uuid
+  AND u.papel IN ('gerente_posto', 'frentista', 'cliente')
+  AND LOWER(TRIM(u.email)) = LOWER(TRIM($2))
+ORDER BY u.ativo DESC, u.criado_em DESC
+LIMIT 1`
+
+	var row UsuarioPainelLogin
+	err := r.db.QueryRowContext(ctx, query, idRede, email).Scan(
+		&row.ID,
+		&row.IDRede,
+		&row.IDPosto,
+		&row.Papel,
+		&row.Nome,
+		&row.SenhaHash,
+		&row.Ativo,
+	)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, ErrUsuarioPainelLoginNaoEncontrado
+	}
+	if err != nil {
+		return nil, err
+	}
+	return &row, nil
+}
+
 // EmailECPFPorUsuarioRede retorna email e CPF (digitos em texto) para o perfil / PIX.
 func (r *usuarioRedePostgres) EmailECPFPorUsuarioRede(idUsuario, idRede string) (email string, cpf string, err error) {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
