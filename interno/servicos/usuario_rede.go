@@ -34,6 +34,7 @@ type ServicoUsuarioRede interface {
 	ListarTokensFCM(idUsuario string) ([]string, error)
 	// ListarTokensFCMClientesRede tokens FCM de todos os clientes ativos da rede (push em massa).
 	ListarTokensFCMClientesRede(idRede string) ([]string, error)
+	DiagnosticoPushRede(idRede string) (*repositorios.DiagnosticoPushRedeStats, error)
 }
 
 // CriarUsuarioEquipeInput cadastro de gerente de posto ou frentista pelo admin global.
@@ -94,6 +95,7 @@ type usuarioRedePostgresRepo interface {
 	UpsertFCMToken(idUsuario, token, plataforma string) error
 	ListarTokensFCMPorUsuarioID(idUsuario string) ([]string, error)
 	ListarTokensFCMPorRedeClientesAtivos(idRede string) ([]string, error)
+	DiagnosticoPushRede(idRede string) (*repositorios.DiagnosticoPushRedeStats, error)
 	DefinirCodigoIndicacao(idUsuario, idRede, codigo string) error
 	ObterCodigoIndicacao(idUsuario, idRede string) (string, error)
 	BuscarIdClientePorCodigoIndicacao(idRede, codigo string) (string, error)
@@ -393,4 +395,8 @@ func (s *servicoUsuarioRede) ListarTokensFCM(idUsuario string) ([]string, error)
 
 func (s *servicoUsuarioRede) ListarTokensFCMClientesRede(idRede string) ([]string, error) {
 	return s.repoUsuarios.ListarTokensFCMPorRedeClientesAtivos(strings.TrimSpace(idRede))
+}
+
+func (s *servicoUsuarioRede) DiagnosticoPushRede(idRede string) (*repositorios.DiagnosticoPushRedeStats, error) {
+	return s.repoUsuarios.DiagnosticoPushRede(strings.TrimSpace(idRede))
 }

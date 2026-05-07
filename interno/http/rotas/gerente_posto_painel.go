@@ -31,6 +31,7 @@ func RegistrarGerentePostoPainel(muxPrincipal *http.ServeMux, h *handlers.Handle
 	mux.Handle("/v1/gerente-posto/dev/combustiveis/editar", http.HandlerFunc(h.EditarCombustivelRede))
 	mux.Handle("/v1/gerente-posto/dev/combustiveis/excluir", http.HandlerFunc(h.ExcluirCombustivelRede))
 	mux.Handle("/v1/gerente-posto/dev/push/fcm/rede/teste", http.HandlerFunc(h.PostFcmTesteRedePainel))
+	mux.Handle("/v1/gerente-posto/dev/push/diagnostico", http.HandlerFunc(h.GetPushDiagnosticoRedePainel))
 	mux.Handle("/v1/gerente-posto/dev/vouchers/consultar", http.HandlerFunc(h.GetVoucherConsultaPorCodigoEquipe))
 	mux.Handle("/v1/gerente-posto/dev/vouchers/baixar", http.HandlerFunc(h.PostVoucherBaixaEquipe))
 	mux.Handle("/v1/gerente-posto/dev/vouchers/listar", http.HandlerFunc(h.GetVouchersComprasPainelEquipe))

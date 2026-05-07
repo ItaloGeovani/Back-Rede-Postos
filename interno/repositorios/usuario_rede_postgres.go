@@ -13,6 +13,13 @@ import (
 	"github.com/jackc/pgx/v5/pgconn"
 )
 
+// DiagnosticoPushRedeStats contagens para diagnosticar envio FCM (campanhas) por rede.
+type DiagnosticoPushRedeStats struct {
+	ClientesAtivos      int `json:"clientes_ativos"`
+	ClientesComTokenFCM int `json:"clientes_com_token_fcm"`
+	TokensDistintos     int `json:"tokens_fcm_distintos"`
+}
+
 type usuarioRedePostgres struct {
 	db *sql.DB
 }
@@ -361,6 +368,51 @@ WHERE u.rede_id = $1::uuid
 		}
 	}
 	return out, rows.Err()
+}
+
+// DiagnosticoPushRede retorna contagens de clientes ativos vs tokens FCM registados na rede.
+func (r *usuarioRedePostgres) DiagnosticoPushRede(idRede string) (*DiagnosticoPushRedeStats, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	defer cancel()
+	idRede = strings.TrimSpace(idRede)
+	if idRede == "" {
+		return nil, errors.New("id rede invalido")
+	}
+	const q = `
+SELECT
+  COALESCE((
+    SELECT COUNT(*)::int FROM usuarios u
+    WHERE u.rede_id = $1::uuid
+      AND u.papel = 'cliente'::papel_usuario
+      AND u.ativo = true
+  ), 0),
+  COALESCE((
+    SELECT COUNT(DISTINCT t.usuario_id)::int
+    FROM usuario_fcm_tokens t
+    INNER JOIN usuarios u ON u.id = t.usuario_id
+    WHERE u.rede_id = $1::uuid
+      AND u.papel = 'cliente'::papel_usuario
+      AND u.ativo = true
+      AND t.token IS NOT NULL
+      AND length(trim(t.token)) >= 20
+  ), 0),
+  COALESCE((
+    SELECT COUNT(DISTINCT trim(t.token))::int
+    FROM usuario_fcm_tokens t
+    INNER JOIN usuarios u ON u.id = t.usuario_id
+    WHERE u.rede_id = $1::uuid
+      AND u.papel = 'cliente'::papel_usuario
+      AND u.ativo = true
+      AND t.token IS NOT NULL
+      AND length(trim(t.token)) >= 20
+  ), 0)`
+
+	st := &DiagnosticoPushRedeStats{}
+	err := r.db.QueryRowContext(ctx, q, idRede).Scan(&st.ClientesAtivos, &st.ClientesComTokenFCM, &st.TokensDistintos)
+	if err != nil {
+		return nil, err
+	}
+	return st, nil
 }
 
 func mapearErroUsuarioEquipePostgres(err error) error {
