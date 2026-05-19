@@ -12,11 +12,13 @@ import (
 type ServicoPosto interface {
 	ListarPorRedeID(idRede string) ([]*modelos.Posto, error)
 	CriarPostoNaRede(p *modelos.Posto) (*modelos.Posto, error)
+	AtualizarPostoNaRede(p *modelos.Posto) (*modelos.Posto, error)
 }
 
 type postoRepositorio interface {
 	ListarPorRedeID(idRede string) ([]*modelos.Posto, error)
 	Criar(p *modelos.Posto) error
+	AtualizarNaRede(p *modelos.Posto) error
 }
 
 type servicoPosto struct {
@@ -64,10 +66,11 @@ func validarURLLogo(s string) bool {
 	return (u.Scheme == "http" || u.Scheme == "https") && u.Host != ""
 }
 
-func (s *servicoPosto) CriarPostoNaRede(p *modelos.Posto) (*modelos.Posto, error) {
+func normalizarCamposPosto(p *modelos.Posto) {
 	if p == nil {
-		return nil, ErrDadosInvalidos
+		return
 	}
+	p.ID = strings.TrimSpace(p.ID)
 	p.IDRede = strings.TrimSpace(p.IDRede)
 	p.Nome = strings.TrimSpace(p.Nome)
 	p.Codigo = strings.TrimSpace(p.Codigo)
@@ -83,21 +86,37 @@ func (s *servicoPosto) CriarPostoNaRede(p *modelos.Posto) (*modelos.Posto, error
 	p.Estado = strings.ToUpper(strings.TrimSpace(p.Estado))
 	p.Telefone = strings.TrimSpace(p.Telefone)
 	p.EmailContato = strings.TrimSpace(p.EmailContato)
+}
 
+func validarCamposPostoObrigatorios(p *modelos.Posto) error {
+	if p == nil {
+		return ErrDadosInvalidos
+	}
 	if p.IDRede == "" || p.Nome == "" || p.Codigo == "" {
-		return nil, ErrDadosInvalidos
+		return ErrDadosInvalidos
 	}
 	if len(p.CNPJ) != 0 && len(p.CNPJ) != 14 {
-		return nil, ErrDadosInvalidos
+		return ErrDadosInvalidos
 	}
 	if len(p.CEP) != 0 && len(p.CEP) != 8 {
-		return nil, ErrDadosInvalidos
+		return ErrDadosInvalidos
 	}
 	if p.Estado != "" && len(p.Estado) != 2 {
-		return nil, ErrDadosInvalidos
+		return ErrDadosInvalidos
 	}
 	if !validarURLLogo(p.LogoURL) {
+		return ErrDadosInvalidos
+	}
+	return nil
+}
+
+func (s *servicoPosto) CriarPostoNaRede(p *modelos.Posto) (*modelos.Posto, error) {
+	if p == nil {
 		return nil, ErrDadosInvalidos
+	}
+	normalizarCamposPosto(p)
+	if err := validarCamposPostoObrigatorios(p); err != nil {
+		return nil, err
 	}
 
 	if _, err := s.repoRede.BuscarPorID(p.IDRede); err != nil {
@@ -105,6 +124,28 @@ func (s *servicoPosto) CriarPostoNaRede(p *modelos.Posto) (*modelos.Posto, error
 	}
 
 	if err := s.repoPosto.Criar(p); err != nil {
+		return nil, err
+	}
+	return p, nil
+}
+
+func (s *servicoPosto) AtualizarPostoNaRede(p *modelos.Posto) (*modelos.Posto, error) {
+	if p == nil {
+		return nil, ErrDadosInvalidos
+	}
+	normalizarCamposPosto(p)
+	if p.ID == "" {
+		return nil, ErrDadosInvalidos
+	}
+	if err := validarCamposPostoObrigatorios(p); err != nil {
+		return nil, err
+	}
+
+	if _, err := s.repoRede.BuscarPorID(p.IDRede); err != nil {
+		return nil, err
+	}
+
+	if err := s.repoPosto.AtualizarNaRede(p); err != nil {
 		return nil, err
 	}
 	return p, nil

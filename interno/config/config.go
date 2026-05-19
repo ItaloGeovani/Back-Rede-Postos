@@ -27,6 +27,8 @@ type Config struct {
 	CORSOrigemPermitida   string
 	// SessaoAPIDuracao: validade de tokens tok_* (login/cadastro) quando a sessão persiste no Postgres.
 	SessaoAPIDuracao time.Duration
+	// APIImgBBKey: chave da API ImgBB (env API_IMGBB_KEY). Só no servidor; uploads falham se vazia.
+	APIImgBBKey string
 }
 
 func Carregar() Config {
@@ -47,6 +49,7 @@ func Carregar() Config {
 		CORSOrigemPermitida:    utils.ObterEnv("CORS_ORIGEM_PERMITIDA", "http://localhost:5173"),
 		PublicBaseURL:          strings.TrimRight(strings.TrimSpace(utils.ObterEnv("PUBLIC_BASE_URL", "")), "/"),
 		SessaoAPIDuracao:       duracaoSessaoAPI(),
+		APIImgBBKey:            strings.TrimSpace(utils.ObterEnv("API_IMGBB_KEY", "")),
 	}
 }
 

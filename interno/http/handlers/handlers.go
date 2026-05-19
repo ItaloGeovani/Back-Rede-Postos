@@ -29,6 +29,7 @@ type Handlers struct {
 	checkinDiario          *servicos.ServicoCheckinDiario
 	gireGanhe              *servicos.ServicoGireGanhe
 	redesSociaisRepo       repositorios.RedeLinksSociaisRepositorio
+	uploadImagem           *servicos.ServicoUploadImagem
 	cfg                    config.Config
 }
 
@@ -55,6 +56,7 @@ func Novos(
 	checkinDiario *servicos.ServicoCheckinDiario,
 	gireGanhe *servicos.ServicoGireGanhe,
 	redesSociaisRepo repositorios.RedeLinksSociaisRepositorio,
+	uploadImagem *servicos.ServicoUploadImagem,
 	cfg config.Config,
 ) *Handlers {
 	return &Handlers{
@@ -80,6 +82,7 @@ func Novos(
 		checkinDiario:          checkinDiario,
 		gireGanhe:              gireGanhe,
 		redesSociaisRepo:       redesSociaisRepo,
+		uploadImagem:           uploadImagem,
 		cfg:                    cfg,
 	}
 }

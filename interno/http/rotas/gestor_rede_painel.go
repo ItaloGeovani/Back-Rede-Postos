@@ -18,6 +18,7 @@ func RegistrarGestorRedePainel(muxPrincipal *http.ServeMux, h *handlers.Handlers
 	mux.Handle("/v1/gestor-rede/dev/campanhas/editar", http.HandlerFunc(h.EditarCampanhaGestorRede))
 	mux.Handle("/v1/gestor-rede/dev/postos/listar", http.HandlerFunc(h.ListarPostosGestorRede))
 	mux.Handle("/v1/gestor-rede/dev/postos/criar", http.HandlerFunc(h.CriarPostoGestorRede))
+	mux.Handle("/v1/gestor-rede/dev/postos/editar", http.HandlerFunc(h.EditarPostoGestorRede))
 	mux.Handle("/v1/gestor-rede/dev/premios/listar", http.HandlerFunc(h.ListarPremiosGestorRede))
 	mux.Handle("/v1/gestor-rede/dev/premios/criar", http.HandlerFunc(h.CriarPremioGestorRede))
 	mux.Handle("/v1/gestor-rede/dev/premios/editar", http.HandlerFunc(h.EditarPremioGestorRede))
@@ -46,6 +47,7 @@ func RegistrarGestorRedePainel(muxPrincipal *http.ServeMux, h *handlers.Handlers
 	mux.Handle("/v1/gestor-rede/dev/vouchers/consultar", http.HandlerFunc(h.GetVoucherConsultaPorCodigoEquipe))
 	mux.Handle("/v1/gestor-rede/dev/vouchers/baixar", http.HandlerFunc(h.PostVoucherBaixaEquipe))
 	mux.Handle("/v1/gestor-rede/dev/vouchers/listar", http.HandlerFunc(h.GetVouchersComprasPainelEquipe))
+	mux.Handle("/v1/gestor-rede/dev/upload-imagem", http.HandlerFunc(h.PostUploadImagem))
 
 	chain := append([]middlewares.Middleware{}, mws...)
 	chain = append(chain, middlewares.ExigirAutenticacao(aut), middlewares.ExigirPapel(modelos.PapelGestorRede))
