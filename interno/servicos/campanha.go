@@ -85,7 +85,12 @@ func NovoServicoCampanha(repo campanhaRepo, repoRede repositorios.RedeRepositori
 }
 
 func (s *servicoCampanha) BuscarPorIDeRede(idCampanha, idRede string) (*modelos.Campanha, error) {
-	return s.repo.BuscarPorIDeRede(idCampanha, idRede)
+	c, err := s.repo.BuscarPorIDeRede(idCampanha, idRede)
+	if err != nil {
+		return nil, err
+	}
+	aplicarLegadoCampanhaCashback(c)
+	return c, nil
 }
 
 func validarURLImagem(s string) bool {
@@ -205,7 +210,14 @@ func (s *servicoCampanha) ListarPorRedeID(idRede string) ([]*modelos.Campanha, e
 	if _, err := s.repoRede.BuscarPorID(idRede); err != nil {
 		return nil, err
 	}
-	return s.repo.ListarPorRedeID(idRede)
+	itens, err := s.repo.ListarPorRedeID(idRede)
+	if err != nil {
+		return nil, err
+	}
+	for _, c := range itens {
+		aplicarLegadoCampanhaCashback(c)
+	}
+	return itens, nil
 }
 
 func baseDescontoSolicitadaBruta(s string) string {
@@ -265,7 +277,7 @@ func (s *servicoCampanha) Criar(sessaoCriador string, in CriarCampanhaInput) (*m
 	mod := normalizarModalidade(in.ModalidadeDesconto)
 	tipoBeneficio := normalizarTipoBeneficio(in.TipoBeneficio)
 	base := normalizarBase(in.BaseDesconto)
-	valor := in.ValorDesconto
+	valor := normalizarPercentualArmazenamento(mod, in.ValorDesconto)
 	if mod == modelos.ModalidadeDescontoNenhum {
 		valor = 0
 	}
@@ -381,7 +393,7 @@ func (s *servicoCampanha) Atualizar(in AtualizarCampanhaInput) error {
 	mod := normalizarModalidade(in.ModalidadeDesconto)
 	tipoBeneficio := normalizarTipoBeneficio(in.TipoBeneficio)
 	base := normalizarBase(in.BaseDesconto)
-	valor := in.ValorDesconto
+	valor := normalizarPercentualArmazenamento(mod, in.ValorDesconto)
 	if mod == modelos.ModalidadeDescontoNenhum {
 		valor = 0
 	}
