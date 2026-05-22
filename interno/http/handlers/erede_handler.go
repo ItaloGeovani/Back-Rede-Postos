@@ -17,12 +17,20 @@ import (
 
 // ERedeWebhookPublico POST /v1/public/erede/webhook/{rede_id} ou .../{rede_id}/{posto_id}
 func (h *Handlers) ERedeWebhookPublico(w http.ResponseWriter, r *http.Request) {
+	// Log imediato: qualquer request que chegar neste handler (POST, GET de teste, etc.).
+	log.Printf(
+		"erede webhook: >>> HIT method=%s path=%q remote=%s content-type=%q ua=%q",
+		r.Method, r.URL.Path, r.RemoteAddr, r.Header.Get("Content-Type"), r.UserAgent(),
+	)
+
 	if r.Method != http.MethodPost {
+		log.Printf("erede webhook: resposta 405 (metodo %s)", r.Method)
 		utils.ResponderErro(w, http.StatusMethodNotAllowed, "metodo nao permitido")
 		return
 	}
 	const prefix = "/v1/public/erede/webhook/"
 	if !strings.HasPrefix(r.URL.Path, prefix) {
+		log.Printf("erede webhook: resposta 404 path=%q", r.URL.Path)
 		http.NotFound(w, r)
 		return
 	}
@@ -32,25 +40,37 @@ func (h *Handlers) ERedeWebhookPublico(w http.ResponseWriter, r *http.Request) {
 	if len(parts) >= 1 {
 		idRede = strings.TrimSpace(parts[0])
 	}
+	idPosto := ""
+	if len(parts) >= 2 {
+		idPosto = strings.TrimSpace(parts[1])
+	}
 	if idRede == "" {
+		log.Printf("erede webhook: resposta 400 rede_id vazio path=%q", r.URL.Path)
 		utils.ResponderErro(w, http.StatusBadRequest, "rede_id invalido")
 		return
 	}
 
 	body, err := io.ReadAll(io.LimitReader(r.Body, 1<<20))
 	if err != nil {
+		log.Printf("erede webhook: resposta 400 leitura corpo rede=%s posto=%s: %v", idRede, idPosto, err)
 		utils.ResponderErro(w, http.StatusBadRequest, "corpo invalido")
 		return
 	}
 	_ = r.Body.Close()
 
+	log.Printf(
+		"erede webhook: POST body rede=%s posto=%s bytes=%d corpo=%s",
+		idRede, idPosto, len(body), truncarLogWebhookERede(body),
+	)
+
 	tid, aprovado, err := erede.ParseWebhook(body)
 	if err != nil {
-		log.Printf("erede webhook: parse rede=%s: %v", idRede, err)
+		log.Printf("erede webhook: parse rede=%s posto=%s: %v", idRede, idPosto, err)
 		w.WriteHeader(http.StatusOK)
 		return
 	}
 	if !aprovado {
+		log.Printf("erede webhook: ignorado (sem PV.UPDATE_TRANSACTION_PIX) rede=%s posto=%s tid=%s", idRede, idPosto, tid)
 		w.WriteHeader(http.StatusOK)
 		return
 	}
@@ -58,7 +78,7 @@ func (h *Handlers) ERedeWebhookPublico(w http.ResponseWriter, r *http.Request) {
 	if h.voucherCompraSvc != nil {
 		h.voucherCompraSvc.ProcessarPagamentoAprovadoERede(idRede, tid)
 	}
-	log.Printf("erede webhook: evento pix aprovado rede=%s tid=%s", idRede, tid)
+	log.Printf("erede webhook: evento pix aprovado rede=%s posto=%s tid=%s", idRede, idPosto, tid)
 	w.WriteHeader(http.StatusOK)
 }
 
@@ -343,4 +363,14 @@ func (h *Handlers) urlWebhookERedePosto(idRede, idPosto string) string {
 		return ""
 	}
 	return base + "/v1/public/erede/webhook/" + strings.TrimSpace(idRede) + "/" + strings.TrimSpace(idPosto)
+}
+
+// truncarLogWebhookERede limita o corpo no log (evita linhas gigantes).
+func truncarLogWebhookERede(body []byte) string {
+	s := strings.TrimSpace(string(body))
+	const max = 512
+	if len(s) <= max {
+		return s
+	}
+	return s[:max] + "..."
 }
