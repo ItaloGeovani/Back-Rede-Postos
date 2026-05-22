@@ -16,8 +16,7 @@ import (
 	"gaspass-servidor/utils"
 )
 
-// MercadoPagoWebhookPublico POST /v1/public/mercadopago/webhook/{rede_id}
-// Cadastre no painel Mercado Pago: URL pública + id da rede no path.
+// MercadoPagoWebhookPublico POST /v1/public/mercadopago/webhook/{rede_id} ou .../{rede_id}/{posto_id}
 func (h *Handlers) MercadoPagoWebhookPublico(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		utils.ResponderErro(w, http.StatusMethodNotAllowed, "metodo nao permitido")
@@ -28,7 +27,16 @@ func (h *Handlers) MercadoPagoWebhookPublico(w http.ResponseWriter, r *http.Requ
 		http.NotFound(w, r)
 		return
 	}
-	idRede := strings.TrimSpace(strings.TrimSuffix(strings.TrimPrefix(r.URL.Path, prefix), "/"))
+	rest := strings.Trim(strings.TrimPrefix(r.URL.Path, prefix), "/")
+	parts := strings.Split(rest, "/")
+	idRede := ""
+	idPosto := ""
+	if len(parts) >= 1 {
+		idRede = strings.TrimSpace(parts[0])
+	}
+	if len(parts) >= 2 {
+		idPosto = strings.TrimSpace(parts[1])
+	}
 	if idRede == "" {
 		utils.ResponderErro(w, http.StatusBadRequest, "rede_id invalido")
 		return
@@ -41,14 +49,20 @@ func (h *Handlers) MercadoPagoWebhookPublico(w http.ResponseWriter, r *http.Requ
 	}
 	_ = r.Body.Close()
 
-	creds, err := h.mpGatewayRepo.BuscarPorRedeID(idRede)
+	var creds *repositorios.MercadoPagoGatewayCredenciais
+	if idPosto != "" {
+		creds, err = h.mpGatewayRepo.BuscarPorPostoID(idPosto, idRede)
+	} else {
+		creds, err = h.mpGatewayRepo.BuscarPorRedeID(idRede)
+	}
 	if err != nil {
-		if errors.Is(err, repositorios.ErrMercadoPagoGatewayNaoConfigurado) {
-			log.Printf("mercadopago webhook: rede %s sem credenciais (ignorado)", idRede)
+		if errors.Is(err, repositorios.ErrMercadoPagoGatewayNaoConfigurado) ||
+			errors.Is(err, repositorios.ErrMercadoPagoGatewayPostoNaoConfigurado) {
+			log.Printf("mercadopago webhook: rede=%s posto=%s sem credenciais (ignorado)", idRede, idPosto)
 			w.WriteHeader(http.StatusOK)
 			return
 		}
-		log.Printf("mercadopago webhook: buscar creds rede=%s: %v", idRede, err)
+		log.Printf("mercadopago webhook: buscar creds rede=%s posto=%s: %v", idRede, idPosto, err)
 		w.WriteHeader(http.StatusOK)
 		return
 	}
@@ -109,49 +123,189 @@ func (h *Handlers) MercadoPagoWebhookPublico(w http.ResponseWriter, r *http.Requ
 	w.WriteHeader(http.StatusOK)
 }
 
-// MercadoPagoGatewayGestor GET/PUT /v1/gestor-rede/dev/mercadopago-gateway
+// MercadoPagoGatewayGestor GET/PUT — gestor (rede ou postos) ou gerente (posto da sessão, modo POSTO).
 func (h *Handlers) MercadoPagoGatewayGestor(w http.ResponseWriter, r *http.Request) {
 	switch r.Method {
 	case http.MethodGet:
-		h.getMercadoPagoGatewayGestor(w, r)
+		h.getMercadoPagoGatewayPainel(w, r)
 	case http.MethodPut:
-		h.putMercadoPagoGatewayGestor(w, r)
+		h.putMercadoPagoGatewayPainel(w, r)
 	default:
 		utils.ResponderErro(w, http.StatusMethodNotAllowed, "metodo nao permitido")
 	}
 }
 
-func (h *Handlers) getMercadoPagoGatewayGestor(w http.ResponseWriter, r *http.Request) {
+// MercadoPagoGatewayPostoGestor PUT /v1/gestor-rede/dev/mercadopago-gateway/posto
+func (h *Handlers) MercadoPagoGatewayPostoGestor(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPut {
+		utils.ResponderErro(w, http.StatusMethodNotAllowed, "metodo nao permitido")
+		return
+	}
+	u := middlewares.Usuario(r.Context())
+	if u == nil || (u.Papel != modelos.PapelGestorRede && u.Papel != modelos.PapelGerentePosto) {
+		utils.ResponderErro(w, http.StatusForbidden, "acesso negado")
+		return
+	}
 	idRede, ok := h.idRedeDaSessao(w, r)
 	if !ok {
 		return
 	}
-	creds, err := h.mpGatewayRepo.BuscarPorRedeID(idRede)
-	out := map[string]any{
-		"webhook_url": h.urlWebhookMercadoPago(idRede),
-	}
+	rede, err := h.redeService.BuscarPorID(idRede)
 	if err != nil {
-		out["mp_access_token_configurado"] = false
-		out["mp_webhook_secret_configurado"] = false
+		utils.ResponderErro(w, http.StatusInternalServerError, "falha ao carregar rede")
+		return
+	}
+	modo := servicos.NormalizarGatewayPagamentoModo(rede.GatewayPagamentoModo)
+	if modo != modelos.GatewayPagamentoModoPosto {
+		utils.ResponderErro(w, http.StatusBadRequest, "rede usa gateway unico; altere o modo em Gateways de pagamento")
+		return
+	}
+	var body struct {
+		IDPosto       string `json:"id_posto"`
+		AccessToken   string `json:"mp_access_token"`
+		WebhookSecret string `json:"mp_webhook_secret"`
+	}
+	if err := json.NewDecoder(io.LimitReader(r.Body, 1<<16)).Decode(&body); err != nil {
+		utils.ResponderErro(w, http.StatusBadRequest, "json invalido")
+		return
+	}
+	idPosto := strings.TrimSpace(body.IDPosto)
+	if u.Papel == modelos.PapelGerentePosto {
+		idPosto = strings.TrimSpace(u.IDPosto)
+	}
+	if idPosto == "" {
+		utils.ResponderErro(w, http.StatusBadRequest, "id_posto obrigatorio")
+		return
+	}
+	if strings.TrimSpace(body.AccessToken) == "" || strings.TrimSpace(body.WebhookSecret) == "" {
+		utils.ResponderErro(w, http.StatusBadRequest, "mp_access_token e mp_webhook_secret sao obrigatorios")
+		return
+	}
+	if err := h.mpGatewayRepo.UpsertPosto(idPosto, idRede, body.AccessToken, body.WebhookSecret); err != nil {
+		log.Printf("mercadopago upsert posto=%s rede=%s: %v", idPosto, idRede, err)
+		utils.ResponderErro(w, http.StatusInternalServerError, "falha ao salvar credenciais do posto")
+		return
+	}
+	utils.ResponderJSON(w, http.StatusOK, map[string]any{
+		"ok":          true,
+		"webhook_url": h.urlWebhookMercadoPagoPosto(idRede, idPosto),
+	})
+}
+
+// EditarGatewayPagamentoModoGestor PUT /v1/gestor-rede/dev/redes/gateway-pagamento-modo
+func (h *Handlers) EditarGatewayPagamentoModoGestor(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPut {
+		utils.ResponderErro(w, http.StatusMethodNotAllowed, "metodo nao permitido")
+		return
+	}
+	idRede, ok := h.idRedeDaSessao(w, r)
+	if !ok {
+		return
+	}
+	var body struct {
+		Modo string `json:"gateway_pagamento_modo"`
+	}
+	if err := json.NewDecoder(io.LimitReader(r.Body, 1<<16)).Decode(&body); err != nil {
+		utils.ResponderErro(w, http.StatusBadRequest, "json invalido")
+		return
+	}
+	rede, err := h.redeService.EditarGatewayPagamentoModo(idRede, body.Modo)
+	if err != nil {
+		if errors.Is(err, servicos.ErrDadosInvalidos) {
+			utils.ResponderErro(w, http.StatusBadRequest, "modo invalido (use REDE ou POSTO)")
+			return
+		}
+		utils.ResponderErro(w, http.StatusInternalServerError, "falha ao salvar modo")
+		return
+	}
+	utils.ResponderJSON(w, http.StatusOK, map[string]any{
+		"ok":                     true,
+		"gateway_pagamento_modo": rede.GatewayPagamentoModo,
+	})
+}
+
+func (h *Handlers) getMercadoPagoGatewayPainel(w http.ResponseWriter, r *http.Request) {
+	idRede, ok := h.idRedeDaSessao(w, r)
+	if !ok {
+		return
+	}
+	u := middlewares.Usuario(r.Context())
+	rede, err := h.redeService.BuscarPorID(idRede)
+	if err != nil {
+		utils.ResponderErro(w, http.StatusInternalServerError, "falha ao carregar rede")
+		return
+	}
+	modo := servicos.NormalizarGatewayPagamentoModo(rede.GatewayPagamentoModo)
+	out := map[string]any{
+		"gateway_pagamento_modo": modo,
+	}
+
+	if u != nil && u.Papel == modelos.PapelGerentePosto {
+		idPosto := strings.TrimSpace(u.IDPosto)
+		if modo != modelos.GatewayPagamentoModoPosto {
+			out["mensagem"] = "Esta rede usa uma conta Mercado Pago unica (configurada pelo gestor)."
+			utils.ResponderJSON(w, http.StatusOK, out)
+			return
+		}
+		out["id_posto"] = idPosto
+		out["webhook_url"] = h.urlWebhookMercadoPagoPosto(idRede, idPosto)
+		creds, errC := h.mpGatewayRepo.BuscarPorPostoID(idPosto, idRede)
+		h.preencherCredenciaisMPNoJSON(out, creds, errC)
 		utils.ResponderJSON(w, http.StatusOK, out)
 		return
 	}
-	configurado := strings.TrimSpace(creds.AccessToken) != ""
-	secretOk := strings.TrimSpace(creds.WebhookSecret) != ""
-	out["mp_access_token_configurado"] = configurado
-	out["mp_webhook_secret_configurado"] = secretOk
-	if configurado {
-		out["mp_access_token_mascarado"] = mascararSegredoMercadoPago(creds.AccessToken)
+
+	if modo == modelos.GatewayPagamentoModoPosto {
+		postos, err := h.mpGatewayRepo.ListarStatusPostosPorRede(idRede)
+		if err != nil {
+			log.Printf("mercadopago listar postos rede=%s: %v", idRede, err)
+			utils.ResponderErro(w, http.StatusInternalServerError, "falha ao listar postos")
+			return
+		}
+		base := strings.TrimRight(strings.TrimSpace(h.cfg.PublicBaseURL), "/")
+		itens := make([]map[string]any, 0, len(postos))
+		for _, p := range postos {
+			wh := ""
+			if base != "" {
+				wh = base + "/v1/public/mercadopago/webhook/" + idRede + "/" + p.PostoID
+			}
+			itens = append(itens, map[string]any{
+				"id_posto":                      p.PostoID,
+				"nome":                          p.Nome,
+				"codigo":                        p.Codigo,
+				"webhook_url":                   wh,
+				"mp_access_token_configurado":   p.MpAccessTokenOK,
+				"mp_webhook_secret_configurado": p.MpWebhookSecretOK,
+			})
+		}
+		out["postos"] = itens
+		utils.ResponderJSON(w, http.StatusOK, out)
+		return
 	}
-	if secretOk {
-		out["mp_webhook_secret_mascarado"] = mascararSegredoMercadoPago(creds.WebhookSecret)
-	}
+
+	out["webhook_url"] = h.urlWebhookMercadoPago(idRede)
+	creds, errC := h.mpGatewayRepo.BuscarPorRedeID(idRede)
+	h.preencherCredenciaisMPNoJSON(out, creds, errC)
 	utils.ResponderJSON(w, http.StatusOK, out)
 }
 
-func (h *Handlers) putMercadoPagoGatewayGestor(w http.ResponseWriter, r *http.Request) {
+func (h *Handlers) putMercadoPagoGatewayPainel(w http.ResponseWriter, r *http.Request) {
 	idRede, ok := h.idRedeDaSessao(w, r)
 	if !ok {
+		return
+	}
+	u := middlewares.Usuario(r.Context())
+	if u != nil && u.Papel == modelos.PapelGerentePosto {
+		utils.ResponderErro(w, http.StatusForbidden, "gerente deve usar salvar credenciais do posto (PUT mercadopago-gateway/posto)")
+		return
+	}
+	rede, err := h.redeService.BuscarPorID(idRede)
+	if err != nil {
+		utils.ResponderErro(w, http.StatusInternalServerError, "falha ao carregar rede")
+		return
+	}
+	if servicos.NormalizarGatewayPagamentoModo(rede.GatewayPagamentoModo) != modelos.GatewayPagamentoModoRede {
+		utils.ResponderErro(w, http.StatusBadRequest, "no modo por posto use PUT mercadopago-gateway/posto para cada unidade")
 		return
 	}
 	var body struct {
@@ -175,6 +329,24 @@ func (h *Handlers) putMercadoPagoGatewayGestor(w http.ResponseWriter, r *http.Re
 		"ok":          true,
 		"webhook_url": h.urlWebhookMercadoPago(idRede),
 	})
+}
+
+func (h *Handlers) preencherCredenciaisMPNoJSON(out map[string]any, creds *repositorios.MercadoPagoGatewayCredenciais, err error) {
+	out["mp_access_token_configurado"] = false
+	out["mp_webhook_secret_configurado"] = false
+	if err != nil {
+		return
+	}
+	configurado := strings.TrimSpace(creds.AccessToken) != ""
+	secretOk := strings.TrimSpace(creds.WebhookSecret) != ""
+	out["mp_access_token_configurado"] = configurado
+	out["mp_webhook_secret_configurado"] = secretOk
+	if configurado {
+		out["mp_access_token_mascarado"] = mascararSegredoMercadoPago(creds.AccessToken)
+	}
+	if secretOk {
+		out["mp_webhook_secret_mascarado"] = mascararSegredoMercadoPago(creds.WebhookSecret)
+	}
 }
 
 // PostClienteMercadoPagoPix POST /v1/eu/pagamentos/mercadopago/pix — cliente autenticado; valor validado no servidor.
@@ -286,6 +458,14 @@ func (h *Handlers) urlWebhookMercadoPago(idRede string) string {
 		return ""
 	}
 	return base + "/v1/public/mercadopago/webhook/" + strings.TrimSpace(idRede)
+}
+
+func (h *Handlers) urlWebhookMercadoPagoPosto(idRede, idPosto string) string {
+	base := strings.TrimRight(strings.TrimSpace(h.cfg.PublicBaseURL), "/")
+	if base == "" {
+		return ""
+	}
+	return base + "/v1/public/mercadopago/webhook/" + strings.TrimSpace(idRede) + "/" + strings.TrimSpace(idPosto)
 }
 
 func mascararSegredoMercadoPago(s string) string {

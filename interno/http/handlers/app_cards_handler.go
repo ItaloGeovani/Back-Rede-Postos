@@ -8,6 +8,7 @@ import (
 
 	"gaspass-servidor/interno/modelos"
 	"gaspass-servidor/interno/repositorios"
+	"gaspass-servidor/interno/servicos"
 	"gaspass-servidor/utils"
 )
 
@@ -217,6 +218,7 @@ func (h *Handlers) PublicRedeInfo(w http.ResponseWriter, r *http.Request) {
 		"app_modulo_checkin_diario": rede.AppModuloCheckinDiario,
 		"app_modulo_gire_ganhe":     rede.AppModuloGireGanhe,
 		"app_modulo_redes_sociais":  rede.AppModuloRedesSociais,
+		"gateway_pagamento_modo":    servicos.NormalizarGatewayPagamentoModo(rede.GatewayPagamentoModo),
 		"rede_logo_url":             h.resolveRedeLogoURLPublic(idRede),
 	}
 	if h.niveisCliente != nil {

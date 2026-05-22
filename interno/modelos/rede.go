@@ -2,6 +2,11 @@ package modelos
 
 import "time"
 
+const (
+	GatewayPagamentoModoRede = "REDE"
+	GatewayPagamentoModoPosto = "POSTO"
+)
+
 type Rede struct {
 	ID                  string    `json:"id"`
 	NomeFantasia        string    `json:"nome_fantasia"`
@@ -19,6 +24,8 @@ type Rede struct {
 	VoucherDiasValidadeResgate int `json:"voucher_dias_validade_resgate"`
 	// VoucherMinutosExpiraPagamentoPix tempo para pagar a cobrança PIX antes de expirar.
 	VoucherMinutosExpiraPagamentoPix int `json:"voucher_minutos_expira_pagamento_pix"`
+	// GatewayPagamentoModo: REDE (conta única) ou POSTO (conta por unidade).
+	GatewayPagamentoModo string `json:"gateway_pagamento_modo"`
 	// Módulos opcionais do app (painel: Configuracoes; padrao false).
 	AppModuloIndiqueGanhe  bool      `json:"app_modulo_indique_ganhe"`
 	AppModuloCheckinDiario bool      `json:"app_modulo_checkin_diario"`

@@ -48,6 +48,7 @@ type VoucherCompraRegistro struct {
 	ExpiraPagamento     *time.Time `json:"expira_pagamento_em,omitempty"`
 	ExpiraResgate       *time.Time `json:"expira_resgate_em,omitempty"`
 	UsadoEm             *time.Time `json:"usado_em,omitempty"`
+	PostoCompraID       *string    `json:"id_posto_compra,omitempty"`
 	PostoUsoID          *string    `json:"id_posto_uso,omitempty"`
 	PostoUsoNome        string     `json:"posto_uso_nome,omitempty"`
 	OperadorUsuarioID   *string    `json:"operador_usuario_id,omitempty"`

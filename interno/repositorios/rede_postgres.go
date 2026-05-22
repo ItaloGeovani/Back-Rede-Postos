@@ -40,6 +40,7 @@ SELECT
   moeda_virtual_cotacao::float8,
   COALESCE(voucher_dias_validade_resgate, 7),
   COALESCE(voucher_minutos_expira_pagamento_pix, 30),
+  COALESCE(gateway_pagamento_modo, 'REDE'),
   COALESCE(app_modulo_indique_ganhe, false),
   COALESCE(app_modulo_checkin_diario, false),
   COALESCE(app_modulo_gire_ganhe, false),
@@ -91,6 +92,7 @@ SELECT
   moeda_virtual_cotacao::float8,
   COALESCE(voucher_dias_validade_resgate, 7),
   COALESCE(voucher_minutos_expira_pagamento_pix, 30),
+  COALESCE(gateway_pagamento_modo, 'REDE'),
   COALESCE(app_modulo_indique_ganhe, false),
   COALESCE(app_modulo_checkin_diario, false),
   COALESCE(app_modulo_gire_ganhe, false),
@@ -185,6 +187,7 @@ SELECT
   moeda_virtual_cotacao::float8,
   COALESCE(voucher_dias_validade_resgate, 7),
   COALESCE(voucher_minutos_expira_pagamento_pix, 30),
+  COALESCE(gateway_pagamento_modo, 'REDE'),
   COALESCE(app_modulo_indique_ganhe, false),
   COALESCE(app_modulo_checkin_diario, false),
   COALESCE(app_modulo_gire_ganhe, false),
@@ -226,10 +229,11 @@ SET
   moeda_virtual_cotacao = $14,
   voucher_dias_validade_resgate = $15,
   voucher_minutos_expira_pagamento_pix = $16,
-  app_modulo_indique_ganhe = $17,
-  app_modulo_checkin_diario = $18,
-  app_modulo_gire_ganhe = $19,
-  app_modulo_redes_sociais = $20,
+  gateway_pagamento_modo = $17,
+  app_modulo_indique_ganhe = $18,
+  app_modulo_checkin_diario = $19,
+  app_modulo_gire_ganhe = $20,
+  app_modulo_redes_sociais = $21,
   atualizado_em = NOW()
 WHERE id = $1
 RETURNING atualizado_em`
@@ -258,6 +262,7 @@ RETURNING atualizado_em`
 		rede.MoedaVirtualCotacao,
 		rede.VoucherDiasValidadeResgate,
 		rede.VoucherMinutosExpiraPagamentoPix,
+		normalizarGatewayPagamentoModoRede(rede.GatewayPagamentoModo),
 		rede.AppModuloIndiqueGanhe,
 		rede.AppModuloCheckinDiario,
 		rede.AppModuloGireGanhe,
@@ -296,6 +301,7 @@ func scanRede(s scannerRede) (*modelos.Rede, error) {
 		&rede.MoedaVirtualCotacao,
 		&rede.VoucherDiasValidadeResgate,
 		&rede.VoucherMinutosExpiraPagamentoPix,
+		&rede.GatewayPagamentoModo,
 		&rede.AppModuloIndiqueGanhe,
 		&rede.AppModuloCheckinDiario,
 		&rede.AppModuloGireGanhe,
@@ -309,6 +315,9 @@ func scanRede(s scannerRede) (*modelos.Rede, error) {
 	}
 	if primeiro.Valid {
 		rede.PrimeiroCobranca = primeiro.Time
+	}
+	if strings.TrimSpace(rede.GatewayPagamentoModo) == "" {
+		rede.GatewayPagamentoModo = modelos.GatewayPagamentoModoRede
 	}
 	return &rede, nil
 }
@@ -338,4 +347,12 @@ func mapearErroRedePostgres(err error) error {
 		}
 		return err
 	}
+}
+
+func normalizarGatewayPagamentoModoRede(s string) string {
+	s = strings.ToUpper(strings.TrimSpace(s))
+	if s == modelos.GatewayPagamentoModoPosto {
+		return modelos.GatewayPagamentoModoPosto
+	}
+	return modelos.GatewayPagamentoModoRede
 }

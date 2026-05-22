@@ -31,16 +31,16 @@ func (r *voucherCompraPostgres) CriarPendenteComPix(x *VoucherCompraRegistro) er
 	comb := nullUUIDString(x.CombustivelRedeID)
 	return r.db.QueryRowContext(ctx, `
 INSERT INTO voucher_compras (
-  id, rede_id, usuario_id, campanha_id, combustivel_rede_id, valor_solicitado, desconto_aplicado, valor_final,
+  id, rede_id, usuario_id, campanha_id, combustivel_rede_id, posto_id_compra, valor_solicitado, desconto_aplicado, valor_final,
   tipo_beneficio, cashback_percentual, cashback_valor, litros, status,
   mp_payment_id, referencia_pagamento, expira_pagamento_em, criado_em, atualizado_em
 ) VALUES (
-  $1::uuid, $2::uuid, $3::uuid, $4, $5, $6, $7, $8,
-  $9, $10, $11, $12, $13::status_voucher_compra,
-  $14, $15, $16, NOW(), NOW()
+  $1::uuid, $2::uuid, $3::uuid, $4, $5, $6, $7, $8, $9,
+  $10, $11, $12, $13, $14::status_voucher_compra,
+  $15, $16, $17, NOW(), NOW()
 )
 RETURNING id::text, criado_em, atualizado_em
-`, x.ID, x.RedeID, x.UsuarioID, camp, comb, x.ValorSolicitado, x.DescontoAplicado, x.ValorFinal,
+`, x.ID, x.RedeID, x.UsuarioID, camp, comb, nullUUIDString(x.PostoCompraID), x.ValorSolicitado, x.DescontoAplicado, x.ValorFinal,
 		emptyAsDefault(x.TipoBeneficio, "DESCONTO"), nullFloat64IfPositive(x.CashbackPercentual), x.CashbackValor, nullFloat64Ptr(x.Litros), x.Status,
 		mpID, nullStringPtr(ref), x.ExpiraPagamento,
 	).Scan(&x.ID, &x.CriadoEm, &x.AtualizadoEm)
@@ -92,12 +92,14 @@ func scanVcr(s scannerVcr, x *VoucherCompraRegistro) error {
 	var exPag, exRes, usado, cashbackCred sql.NullTime
 	var tipoBeneficio sql.NullString
 	var combID, combNome sql.NullString
+	var postoCompraID sql.NullString
 	var postoID, postoNome, opUID, opPapel, opNome sql.NullString
 	err := s.Scan(
 		&x.ID, &x.RedeID, &x.UsuarioID, &camp, &x.ValorSolicitado, &x.DescontoAplicado, &x.ValorFinal,
 		&tipoBeneficio, &cashbackPct, &cashbackVal, &cashbackCred, &litros, &x.Status,
 		&mpID, &ref, &cod, &exPag, &exRes, &x.CriadoEm, &x.AtualizadoEm,
 		&combID, &combNome,
+		&postoCompraID,
 		&usado, &postoID, &postoNome, &opUID, &opPapel, &opNome,
 	)
 	if err != nil {
@@ -149,6 +151,7 @@ func scanVcr(s scannerVcr, x *VoucherCompraRegistro) error {
 		x.ExpiraResgate = &t
 	}
 	preencherCombustivelRede(x, combID, combNome)
+	preencherPostoCompra(x, postoCompraID)
 	preencherUsoPostoOperador(x, usado, postoID, postoNome, opUID, opPapel, opNome)
 	return nil
 }
@@ -174,6 +177,14 @@ func preencherCombustivelRede(x *VoucherCompraRegistro, id, nome sql.NullString)
 	}
 	if nome.Valid && strings.TrimSpace(nome.String) != "" {
 		x.CombustivelRedeNome = strings.TrimSpace(nome.String)
+	}
+}
+
+func preencherPostoCompra(x *VoucherCompraRegistro, postoCompraID sql.NullString) {
+	x.PostoCompraID = nil
+	if postoCompraID.Valid && strings.TrimSpace(postoCompraID.String) != "" {
+		v := strings.TrimSpace(postoCompraID.String)
+		x.PostoCompraID = &v
 	}
 }
 
@@ -215,6 +226,7 @@ func scanVcrComCampanha(s scannerVcr, x *VoucherCompraRegistro) error {
 	var tipoBeneficio sql.NullString
 	var cbCamp, cbTit sql.NullString
 	var combID, combNome sql.NullString
+	var postoCompraID sql.NullString
 	var postoID, postoNome, opUID, opPapel, opNome sql.NullString
 	err := s.Scan(
 		&x.ID, &x.RedeID, &x.UsuarioID, &camp, &x.ValorSolicitado, &x.DescontoAplicado, &x.ValorFinal,
@@ -222,6 +234,7 @@ func scanVcrComCampanha(s scannerVcr, x *VoucherCompraRegistro) error {
 		&mpID, &ref, &cod, &exPag, &exRes, &x.CriadoEm, &x.AtualizadoEm,
 		&cbCamp, &cbTit,
 		&combID, &combNome,
+		&postoCompraID,
 		&usado, &postoID, &postoNome, &opUID, &opPapel, &opNome,
 	)
 	if err != nil {
@@ -274,6 +287,7 @@ func scanVcrComCampanha(s scannerVcr, x *VoucherCompraRegistro) error {
 	}
 	preencherTipoCampanhaDoJoin(x, cbCamp, cbTit)
 	preencherCombustivelRede(x, combID, combNome)
+	preencherPostoCompra(x, postoCompraID)
 	preencherUsoPostoOperador(x, usado, postoID, postoNome, opUID, opPapel, opNome)
 	return nil
 }
@@ -286,6 +300,7 @@ func scanVcrEquipe(s scannerVcr, x *VoucherCompraRegistro, clienteNome, clienteE
 	var tipoBeneficio sql.NullString
 	var cbCamp, cbTit sql.NullString
 	var combID, combNome sql.NullString
+	var postoCompraID sql.NullString
 	var postoID, postoNome, opUID, opPapel, opNome sql.NullString
 	err := s.Scan(
 		&x.ID, &x.RedeID, &x.UsuarioID, &camp, &x.ValorSolicitado, &x.DescontoAplicado, &x.ValorFinal,
@@ -294,6 +309,7 @@ func scanVcrEquipe(s scannerVcr, x *VoucherCompraRegistro, clienteNome, clienteE
 		clienteNome, clienteEmail,
 		&cbCamp, &cbTit,
 		&combID, &combNome,
+		&postoCompraID,
 		&usado, &postoID, &postoNome, &opUID, &opPapel, &opNome,
 	)
 	if err != nil {
@@ -346,6 +362,7 @@ func scanVcrEquipe(s scannerVcr, x *VoucherCompraRegistro, clienteNome, clienteE
 	}
 	preencherTipoCampanhaDoJoin(x, cbCamp, cbTit)
 	preencherCombustivelRede(x, combID, combNome)
+	preencherPostoCompra(x, postoCompraID)
 	preencherUsoPostoOperador(x, usado, postoID, postoNome, opUID, opPapel, opNome)
 	return nil
 }
@@ -364,6 +381,7 @@ SELECT
   COALESCE(NULLIF(TRIM(c.titulo), ''), NULLIF(TRIM(c.nome), '')),
   v.combustivel_rede_id::text,
   COALESCE(NULLIF(TRIM(comb.nome), ''), ''),
+  v.posto_id_compra::text,
   v.usado_em, v.posto_id_uso::text,
   COALESCE(NULLIF(TRIM(pu.nome), ''), ''),
   v.operador_usuario_id::text, v.operador_papel, v.operador_nome_snapshot
@@ -400,6 +418,7 @@ SELECT
   COALESCE(NULLIF(TRIM(c.titulo), ''), NULLIF(TRIM(c.nome), '')),
   v.combustivel_rede_id::text,
   COALESCE(NULLIF(TRIM(comb.nome), ''), ''),
+  v.posto_id_compra::text,
   v.usado_em, v.posto_id_uso::text,
   COALESCE(NULLIF(TRIM(pu.nome), ''), ''),
   v.operador_usuario_id::text, v.operador_papel, v.operador_nome_snapshot
@@ -478,6 +497,7 @@ SELECT
   v.mp_payment_id, v.referencia_pagamento, v.codigo_resgate, v.expira_pagamento_em, v.expira_resgate_em, v.criado_em, v.atualizado_em,
   v.combustivel_rede_id::text,
   COALESCE(NULLIF(TRIM(comb.nome), ''), ''),
+  v.posto_id_compra::text,
   v.usado_em, v.posto_id_uso::text,
   COALESCE(NULLIF(TRIM(pu.nome), ''), ''),
   v.operador_usuario_id::text, v.operador_papel, v.operador_nome_snapshot
@@ -517,6 +537,7 @@ SELECT
   COALESCE(NULLIF(TRIM(c.titulo), ''), NULLIF(TRIM(c.nome), '')),
   v.combustivel_rede_id::text,
   COALESCE(NULLIF(TRIM(comb.nome), ''), ''),
+  v.posto_id_compra::text,
   v.usado_em, v.posto_id_uso::text,
   COALESCE(NULLIF(TRIM(pu.nome), ''), ''),
   v.operador_usuario_id::text, v.operador_papel, v.operador_nome_snapshot

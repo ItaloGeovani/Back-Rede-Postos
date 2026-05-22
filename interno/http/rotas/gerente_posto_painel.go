@@ -36,6 +36,8 @@ func RegistrarGerentePostoPainel(muxPrincipal *http.ServeMux, h *handlers.Handle
 	mux.Handle("/v1/gerente-posto/dev/vouchers/consultar", http.HandlerFunc(h.GetVoucherConsultaPorCodigoEquipe))
 	mux.Handle("/v1/gerente-posto/dev/vouchers/baixar", http.HandlerFunc(h.PostVoucherBaixaEquipe))
 	mux.Handle("/v1/gerente-posto/dev/vouchers/listar", http.HandlerFunc(h.GetVouchersComprasPainelEquipe))
+	mux.Handle("/v1/gerente-posto/dev/mercadopago-gateway", http.HandlerFunc(h.MercadoPagoGatewayGestor))
+	mux.Handle("/v1/gerente-posto/dev/mercadopago-gateway/posto", http.HandlerFunc(h.MercadoPagoGatewayPostoGestor))
 
 	chain := append([]middlewares.Middleware{}, mws...)
 	chain = append(chain, middlewares.ExigirAutenticacao(aut), middlewares.ExigirPapel(modelos.PapelGerentePosto))

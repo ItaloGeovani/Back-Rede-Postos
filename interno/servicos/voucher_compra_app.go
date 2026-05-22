@@ -331,9 +331,9 @@ func normalizarPercentual(v float64) float64 {
 	return v
 }
 
-// PagarComPixInicia cria cobrança MP e registro local.
+// PagarComPixInicia cria cobrança MP e registro local. idPosto obrigatório se a rede usa gateway_pagamento_modo POSTO.
 func (s *ServicoVoucherCompra) PagarComPixInicia(ctx context.Context, idRede, idUsuario string, valor float64, idCampanha *string,
-	idCombustivelRede *string, litros *float64,
+	idCombustivelRede *string, litros *float64, idPosto string,
 	payerEmail, docTipo, docNumero string, agora time.Time,
 ) (*repositorios.VoucherCompraRegistro, *payment.Response, error) {
 	if strings.TrimSpace(idRede) == "" || strings.TrimSpace(idUsuario) == "" {
@@ -357,39 +357,38 @@ func (s *ServicoVoucherCompra) PagarComPixInicia(ctx context.Context, idRede, id
 				return nil, nil, errors.New("limite de usos desta campanha para voce foi atingido")
 			}
 		}
+		pid := strings.TrimSpace(c.IDPosto)
+		if pid != "" {
+			preq := strings.TrimSpace(idPosto)
+			if preq == "" {
+				return nil, nil, errors.New("esta campanha e exclusiva de um posto; selecione o posto na compra")
+			}
+			if pid != preq {
+				return nil, nil, errors.New("campanha nao valida para o posto selecionado")
+			}
+		}
 	}
 	if calc.ValorFinal < 1.0 {
 		return nil, nil, errors.New("valor final apos desconto deve ser pelo menos R$ 1,00")
 	}
 
-	creds, err := s.mpGW.BuscarPorRedeID(idRede)
+	gw, err := ResolverGatewayPagamento(s.rede, s.mpGW, s.cfg, idRede, idPosto)
 	if err != nil {
-		if errors.Is(err, repositorios.ErrMercadoPagoGatewayNaoConfigurado) {
-			return nil, nil, errors.New("rede sem mercado pago configurado")
-		}
 		return nil, nil, err
 	}
-	if strings.TrimSpace(creds.AccessToken) == "" {
-		return nil, nil, errors.New("rede sem mp_access_token")
-	}
-	base := strings.TrimRight(strings.TrimSpace(s.cfg.PublicBaseURL), "/")
-	if base == "" {
-		return nil, nil, errors.New("servidor sem PUBLIC_BASE_URL")
-	}
-	notif := base + "/v1/public/mercadopago/webhook/" + idRede
 
 	idCompra := uuid.New().String()
 	ref := prefixoRefVoucherCompra + idCompra
 	expP := agora.Add(s.duracaoPagamentoPix(idRede))
 
-	res, err := CriarCobrancaPixMercadoPago(ctx, creds.AccessToken, CriarCobrancaPixMercadoPagoInput{
+	res, err := CriarCobrancaPixMercadoPago(ctx, gw.AccessToken, CriarCobrancaPixMercadoPagoInput{
 		Valor:             calc.ValorFinal,
 		Descricao:         "Voucher Auto Posto",
 		PayerEmail:        payerEmail,
 		DocTipo:           docTipo,
 		DocNumero:         docNumero,
 		ExternalReference: ref,
-		NotificationURL:   notif,
+		NotificationURL:   gw.WebhookURL,
 	})
 	if err != nil {
 		return nil, nil, err
@@ -409,6 +408,7 @@ func (s *ServicoVoucherCompra) PagarComPixInicia(ctx context.Context, idRede, id
 		MpPaymentID:         &mpid,
 		ReferenciaPagamento: &ref,
 		ExpiraPagamento:     &expP,
+		PostoCompraID:       gw.PostoIDCompra,
 	}
 	if idCampanha != nil && strings.TrimSpace(*idCampanha) != "" {
 		s := strings.TrimSpace(*idCampanha)
@@ -537,6 +537,12 @@ func (s *ServicoVoucherCompra) RegistrarBaixaPorCodigoEquipe(u *modelos.UsuarioS
 	}
 	if vc.ExpiraResgate != nil && time.Now().After(*vc.ExpiraResgate) {
 		return nil, ErrVoucherEquipeResgateExpirado
+	}
+	if vc.PostoCompraID != nil && strings.TrimSpace(*vc.PostoCompraID) != "" {
+		compraPosto := strings.TrimSpace(*vc.PostoCompraID)
+		if postoPtr == nil || strings.TrimSpace(*postoPtr) != compraPosto {
+			return nil, errors.New("este voucher so pode ser usado no posto onde foi comprado")
+		}
 	}
 	if err := s.repo.RegistrarBaixaUso(vc.ID, u.IDRede, postoPtr, u.IDUsuario, string(u.Papel), strings.TrimSpace(u.NomeCompleto)); err != nil {
 		return nil, err

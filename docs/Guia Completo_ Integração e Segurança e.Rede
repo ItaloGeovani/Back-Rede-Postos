@@ -1,0 +1,140 @@
+# Guia Completo: Integração e Segurança e.Rede
+
+Este documento consolida informações essenciais da e.Rede, abrangendo a migração para o protocolo OAuth 2.0, o cadastro de IPs confiáveis, e um guia de integração detalhado para parceiros de e-commerce, incluindo acesso à API, Sandbox e Portal Rede.
+
+## 1. Migração para OAuth 2.0 e Cadastro de IPs Confiáveis
+
+### 1.1. Conheça o OAuth 2.0
+
+O **OAuth 2.0 (Open Authorization)** é um protocolo de autorização que permite que aplicações acessem recursos de forma segura, por meio de **tokens temporários** que são gerados e validados, aumentando o nível de proteção dos dados e das transações.
+
+### 1.2. Migração para o Novo Protocolo de Autenticação
+
+A migração para o protocolo de autenticação OAuth 2.0 é **obrigatória** e deve ser concluída até **01/08/2026**. É fundamental que as equipes técnicas realizem os ajustes necessários para a adequação ao novo protocolo.
+
+Para mais detalhes sobre como realizar a migração, o portal do desenvolvedor, na seção “Autenticação e autorização”, deve ser consultado. Materiais de apoio, como tutorial e FAQ, também estão disponíveis.
+
+### 1.3. Cadastro de IPs Confiáveis
+
+Enquanto a migração para o OAuth 2.0 não é concluída, o cadastro de IPs confiáveis é uma **medida adicional e obrigatória** para elevar a segurança das transações.
+
+#### 1.3.1. Prazo Importante
+
+Após o recebimento do comunicado, há um prazo de **15 dias corridos** para realizar o cadastro dos IPs confiáveis. Caso o cadastro não seja feito dentro desse prazo, as transações serão negadas, o que poderá impactar a operação.
+
+#### 1.3.2. Pontos de Atenção Importantes
+
+*   **Validação de IP e Código de Erro**: Transações enviadas a partir de um IP diferente dos cadastrados serão negadas com o erro **3301 – “PV with invalid ip origin.”**. Este retorno indica que o IP de origem da requisição não está autorizado para o ponto de venda informado.
+*   **Integração via Plataforma ou Gateway**: Empresas que realizam a integração com o e.Rede por meio de uma plataforma ou gateway devem entrar em contato com essa plataforma para identificar os IPs de saída utilizados na comunicação com as APIs da Rede. Esses são os IPs que devem ser cadastrados.
+
+#### 1.3.3. Como Cadastrar IPs Confiáveis
+
+Para cadastrar os IPs, acesse o portal userede.com e siga a rota:
+
+`Portal logado → Menu Para Vender → E-commerce → Gestão de IPs`
+
+Um tutorial detalhado sobre o cadastro de IPs confiáveis está disponível.
+
+#### 1.3.4. Responsabilidade pelo Cadastro
+
+O cadastro correto e atualizado dos IPs confiáveis é de **responsabilidade exclusiva do estabelecimento**. A Rede não se responsabiliza por impactos decorrentes do envio de IPs incorretos, inválidos ou em desconformidade.
+
+Essas ações visam elevar o nível de segurança, garantir a continuidade das operações e apoiar as empresas durante o período de transição até a conclusão da migração para o OAuth 2.0.
+
+## 2. O que você encontra na API e.Rede
+
+A documentação da API e.Rede detalha diversas funcionalidades para melhorar a experiência e otimizar o negócio do seu cliente, com soluções de ponta a ponta em pagamentos online. A API e.Rede está disponível através do link: [https://developer.userede.com.br/e-rede](https://developer.userede.com.br/e-rede).
+
+### 2.1. Funcionalidades e Produtos Disponíveis
+
+*   **Zero Dollar**: Verificação prévia das informações do cartão de crédito do cliente.
+*   **3DS Secure 2.0**: Informações sobre o desenvolvimento do 3DS 2.0 – MPI Rede, Postback e 3DS 2.0 – MPI cliente.
+*   **Data Only**: Modalidade similar ao 3DS, com o objetivo de diminuir o índice de fraudes e aumentar taxas de aprovação.
+*   **Card-on-File**: Armazenamento seguro de informações de crédito e débito para transações futuras sem a necessidade de reinserir os dados do cartão.
+*   **Pix**: Informações para cadastro de chave Pix, cadastro de URL, solicitação de QR Code Pix, notificações de atualização de status via webhook e consulta de transações.
+*   **Retornos**: Retornos de bandeiras, códigos de negativas, retornos do emissor fora do grupo brand, retornos central do cartão, retornos de integração, retornos 3DS e cancelamento.
+*   **Tarifas da bandeira**: Informações sobre regras e tarifações das bandeiras.
+*   **Voucher**: Informações sobre parâmetros de requisição e resposta.
+*   **Carteiras digitais**: Integração com as principais carteiras digitais do mercado, como App Pay, Google Pay e Samsung Pay.
+*   **Retentativa**: Novas tentativas para concluir as transações online.
+*   **Tokenização**: A Rede oferece três tipos de tokenização:
+    *   Cofre de Cartões
+    *   Tokenização de bandeiras Rede
+    *   Tokenização de bandeira externa (captura)
+
+### 2.2. Produtos Disponíveis para Desenvolvimento
+
+Chargeback, Credenciamento, e.Rede, Gestão de Acessos, Gestão de Vendas, Número Lógico, Plataformas E-commerce, Programa de Parcerias Conexão Itaú, QR Code, Rede Store, TEF.
+
+## 3. Acesso ao Sandbox
+
+O Sandbox é um ambiente de testes seguro para simular integrações, erros e validações, fundamental antes de finalizar a integração com a Rede. Acesse o portal do desenvolvedor: [https://developer.userede.com.br](https://developer.userede.com.br).
+
+### 3.1. Como Gerar Chaves no Ambiente de Testes
+
+1.  Dentro do Portal do Desenvolvedor, clique em “criar conta”.
+2.  Em seguida, crie um projeto selecionando o e.Rede como “Pacote de APIs”.
+3.  Após a criação, é gerado um PV e um token (chave de integração) para utilizar no ambiente de testes.
+
+### 3.2. Primeiro Acesso ao Sandbox
+
+Ao acessar o site [https://developer.userede.com.br](https://developer.userede.com.br), no canto superior direito, clique em “criar conta”.
+
+**Passo a passo:**
+1.  Preencha com dados básicos: nome completo, e-mail e celular.
+2.  Cadastre sua senha.
+3.  Verifique o e-mail com código de confirmação.
+4.  Após a confirmação, é possível efetuar seu login.
+
+### 3.3. Já Tenho Acesso ao Portal do Desenvolvedor
+
+Se já possui acesso, o passo a passo é simplificado:
+1.  Acesse o Portal Use Rede e clique em login.
+2.  Acesse com os seus dados do PV que possui as soluções de e-commerce contratadas.
+
+### 3.4. Criando um Projeto no Sandbox
+
+Após acessar o ambiente Sandbox, você pode criar um projeto associado ao e.Rede. Será gerado automaticamente um PV e token para uso exclusivo no ambiente Sandbox. Uma collection do Postman com exemplos de requisições também será disponibilizada para facilitar o processo de integração. Mais informações: [https://developer.userede.com.br/e-rede#tutorial-sandbox-ponto-partida](https://developer.userede.com.br/e-rede#tutorial-sandbox-ponto-partida).
+
+**Atenção!** O Sandbox funciona somente com dados de cartões selecionados, disponíveis no link: [https://developer.userede.com.br/e-rede#tutorial-sandbox-ponto-partida](https://developer.userede.com.br/e-rede#tutorial-sandbox-ponto-partida).
+
+## 4. Acesso ao Portal Rede
+
+Para acessar o Portal Rede, visite [www.userede.com.br](www.userede.com.br).
+
+### 4.1. Primeiro Acesso no Portal da Rede
+
+Ao acessar o site [www.userede.com.br](www.userede.com.br), no canto superior direito, clique em “criar acesso”. Inclua o e-mail e clique em avançar.
+
+**Passo a passo:**
+1.  Preencha com os dados básicos: nome, CPF, celular.
+2.  Inclua o CNPJ ou CPF do seu estabelecimento.
+3.  Informe banco, agência e conta vinculada às vendas na Rede.
+4.  Cadastre sua senha.
+5.  Verifique o e-mail de confirmação.
+6.  Após a confirmação, é possível efetuar seu login.
+
+### 4.2. Já Tenho Acesso ao Portal da Rede
+
+Para acessar as funções do menu e-commerce, selecione o seu PV e-commerce usando o acesso habitual ou os dados de acesso enviados por e-mail quando você contratou as soluções de e-commerce.
+
+**Passo a passo:**
+1.  Acesse o Portal Use Rede e clique em login.
+2.  Acesse com os seus dados do seu PV que possui as soluções de e-commerce contratadas.
+
+## 5. Canais de Atendimento e Suporte
+
+Em caso de dúvidas, a equipe da e.Rede permanece à disposição:
+
+*   **Central de Atendimento**:
+    *   4001 4433 (capitais e regiões metropolitanas)
+    *   0800 728 4433 (demais localidades)
+    *   Atendimento de segunda a sexta, das 8h30 às 18h30.
+*   **Suporte Técnico**:
+    *   4001 4433 (capitais e regiões metropolitanas)
+    *   0800 728 4433 (demais localidades)
+    *   Atendimento 24 horas por dia, 7 dias por semana.
+*   **Ouvidoria**:
+    *   0800 720 0060
+    *   Para casos em que o cliente não ficou satisfeito com a solução apresentada pelos outros canais.
+    *   Atendimento em dias úteis, das 9h às 18h.

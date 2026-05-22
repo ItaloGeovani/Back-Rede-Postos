@@ -95,6 +95,9 @@ func (r *redeMemoria) Criar(rede *modelos.Rede) error {
 	if copia.VoucherMinutosExpiraPagamentoPix < 5 {
 		copia.VoucherMinutosExpiraPagamentoPix = 30
 	}
+	if strings.TrimSpace(copia.GatewayPagamentoModo) == "" {
+		copia.GatewayPagamentoModo = modelos.GatewayPagamentoModoRede
+	}
 	now := time.Now().UTC()
 	copia.CriadoEm = now
 	copia.AtualizadoEm = now

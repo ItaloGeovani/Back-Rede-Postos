@@ -76,6 +76,7 @@ func (h *Handlers) PostVoucherCompraPagar(w http.ResponseWriter, r *http.Request
 		IDCampanha        *string  `json:"id_campanha"`
 		IDCombustivelRede *string  `json:"id_combustivel_rede"`
 		Litros            *float64 `json:"litros"`
+		IDPosto           string   `json:"id_posto"`
 		PayerEmail        string   `json:"payer_email"`
 		DocTipo           string   `json:"doc_tipo"`
 		DocNumero         string   `json:"doc_numero"`
@@ -96,7 +97,7 @@ func (h *Handlers) PostVoucherCompraPagar(w http.ResponseWriter, r *http.Request
 		return
 	}
 	ctx := r.Context()
-	reg, pay, err := h.voucherCompraSvc.PagarComPixInicia(ctx, u.IDRede, u.IDUsuario, body.Valor, body.IDCampanha, body.IDCombustivelRede, body.Litros, body.PayerEmail, body.DocTipo, body.DocNumero, time.Now())
+	reg, pay, err := h.voucherCompraSvc.PagarComPixInicia(ctx, u.IDRede, u.IDUsuario, body.Valor, body.IDCampanha, body.IDCombustivelRede, body.Litros, strings.TrimSpace(body.IDPosto), body.PayerEmail, body.DocTipo, body.DocNumero, time.Now())
 	if err != nil {
 		if errors.Is(err, servicos.ErrDadosInvalidos) || errors.Is(err, servicos.ErrVoucherCampanhaInvalida) {
 			utils.ResponderErro(w, http.StatusBadRequest, err.Error())

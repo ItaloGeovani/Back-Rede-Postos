@@ -38,6 +38,8 @@ func RegistrarGestorRedePainel(muxPrincipal *http.ServeMux, h *handlers.Handlers
 	mux.Handle("/v1/gestor-rede/dev/auditoria/listar", http.HandlerFunc(h.ListarAuditoriaGestorRede))
 	mux.Handle("/v1/gestor-rede/dev/app-cards", http.HandlerFunc(h.AppCardsGestorRede))
 	mux.Handle("/v1/gestor-rede/dev/mercadopago-gateway", http.HandlerFunc(h.MercadoPagoGatewayGestor))
+	mux.Handle("/v1/gestor-rede/dev/mercadopago-gateway/posto", http.HandlerFunc(h.MercadoPagoGatewayPostoGestor))
+	mux.Handle("/v1/gestor-rede/dev/redes/gateway-pagamento-modo", http.HandlerFunc(h.EditarGatewayPagamentoModoGestor))
 	mux.Handle("/v1/gestor-rede/dev/combustiveis/listar", http.HandlerFunc(h.ListarCombustiveisRede))
 	mux.Handle("/v1/gestor-rede/dev/combustiveis/criar", http.HandlerFunc(h.CriarCombustivelRede))
 	mux.Handle("/v1/gestor-rede/dev/combustiveis/editar", http.HandlerFunc(h.EditarCombustivelRede))
