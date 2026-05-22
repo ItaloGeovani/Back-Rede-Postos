@@ -436,7 +436,42 @@ func (s *ServicoVoucherCompra) PagarComPixInicia(ctx context.Context, idRede, id
 	if err := s.repo.CriarPendenteComPix(reg); err != nil {
 		return nil, res, err
 	}
+	logPixVoucherCriado(idRede, reg, gw, res)
 	return reg, res, nil
+}
+
+func logPixVoucherCriado(idRede string, reg *repositorios.VoucherCompraRegistro, gw *GatewayContext, pix *PixCobrancaResult) {
+	if reg == nil || gw == nil || pix == nil {
+		return
+	}
+	posto := ""
+	if reg.PostoCompraID != nil {
+		posto = strings.TrimSpace(*reg.PostoCompraID)
+	}
+	mpID := int64(0)
+	if reg.MpPaymentID != nil {
+		mpID = *reg.MpPaymentID
+	}
+	tid := ""
+	if reg.GatewayTID != nil {
+		tid = strings.TrimSpace(*reg.GatewayTID)
+	}
+	qrLen := len(strings.TrimSpace(pix.QrCode))
+	log.Printf(
+		"voucher_pix criado: rede=%s compra=%s provedor=%s modo_gateway=%s posto_compra=%s "+
+			"gateway_payment_id=%s mp_payment_id=%d tid=%s erede_ambiente=%s qr_len=%d mp_status=%s",
+		strings.TrimSpace(idRede),
+		reg.ID,
+		strings.TrimSpace(reg.GatewayProvedor),
+		gw.Modo,
+		posto,
+		strings.TrimSpace(pix.IDExterno),
+		mpID,
+		tid,
+		strings.TrimSpace(gw.ERedeAmbiente),
+		qrLen,
+		strings.TrimSpace(pix.Status),
+	)
 }
 
 // RetomarDadosPixPendente reconsulta o payment no MP e devolve o QR (na DB só há mp_payment_id, não a string do QR).
@@ -482,6 +517,16 @@ func (s *ServicoVoucherCompra) RetomarDadosPixPendente(ctx context.Context, idCo
 	if strings.TrimSpace(pix.QrCode) == "" {
 		return nil, nil, errors.New("qr pix indisponivel; tente gerar outro pagamento no app")
 	}
+	log.Printf(
+		"voucher_pix retomar: rede=%s compra=%s provedor=%s modo_gateway=%s posto_compra=%s gateway_payment_id=%s mp_status=%s",
+		strings.TrimSpace(idRede),
+		vc.ID,
+		provedor,
+		gw.Modo,
+		idPosto,
+		strings.TrimSpace(pix.IDExterno),
+		strings.TrimSpace(pix.Status),
+	)
 	return vc, pix, nil
 }
 
@@ -505,9 +550,59 @@ func (s *ServicoVoucherCompra) UsosAprovadosPorCampanha(rede, usuarioID string) 
 	return s.repo.ListarUsosAprovadosPorCampanha(rede, usuarioID)
 }
 
-// BuscarMeu de um registro.
+// BuscarMeu de um registro. Se PIX pendente, consulta o provedor (fallback quando webhook não chegou).
 func (s *ServicoVoucherCompra) BuscarMeu(id, rede, usuario string) (*repositorios.VoucherCompraRegistro, error) {
-	return s.repo.BuscarPorID(id, usuario, rede)
+	vc, err := s.repo.BuscarPorID(id, usuario, rede)
+	if err != nil {
+		return nil, err
+	}
+	if vc.Status == "AGUARDANDO_PAGAMENTO" {
+		s.tentarSincronizarStatusPixPendente(context.Background(), vc, rede)
+		return s.repo.BuscarPorID(id, usuario, rede)
+	}
+	return vc, nil
+}
+
+// tentarSincronizarStatusPixPendente consulta e.Rede/MP e ativa o voucher se o pagamento já foi aprovado.
+func (s *ServicoVoucherCompra) tentarSincronizarStatusPixPendente(ctx context.Context, vc *repositorios.VoucherCompraRegistro, idRede string) {
+	if vc == nil || vc.Status != "AGUARDANDO_PAGAMENTO" {
+		return
+	}
+	if vc.ExpiraPagamento != nil && time.Now().After(*vc.ExpiraPagamento) {
+		return
+	}
+	if vc.MpPaymentID == nil && gatewayTIDStr(vc) == "" {
+		return
+	}
+	idPosto := ""
+	if vc.PostoCompraID != nil {
+		idPosto = strings.TrimSpace(*vc.PostoCompraID)
+	}
+	gw, err := ResolverGatewayPagamento(s.rede, s.mpGW, s.eredeGW, s.cfg, idRede, idPosto)
+	if err != nil {
+		return
+	}
+	provedor := strings.TrimSpace(vc.GatewayProvedor)
+	if provedor == "" {
+		provedor = gw.Provedor
+	}
+	pix, err := ConsultarPixVoucher(ctx, gw, provedor, gatewayTIDStr(vc), vc.MpPaymentID)
+	if err != nil {
+		log.Printf("voucher_pix sync: consulta compra=%s provedor=%s: %v", vc.ID, provedor, err)
+		return
+	}
+	if strings.TrimSpace(pix.Status) != "approved" {
+		return
+	}
+	log.Printf(
+		"voucher_pix sync: aprovado no provedor compra=%s provedor=%s id_externo=%s — ativando voucher",
+		vc.ID, provedor, strings.TrimSpace(pix.IDExterno),
+	)
+	if vc.ReferenciaPagamento != nil && strings.TrimSpace(*vc.ReferenciaPagamento) != "" {
+		s.ProcessarPagamentoAprovadoPorReferencia(idRede, *vc.ReferenciaPagamento)
+		return
+	}
+	s.processarAtivacaoVoucher(idRede, vc.ID)
 }
 
 // ConsultarPorCodigoResgateEquipe voucher por código de resgate na rede (frentista / gerente / gestor).

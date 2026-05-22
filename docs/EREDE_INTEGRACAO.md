@@ -50,7 +50,7 @@ No portal e.Rede: **Para Vender → E-commerce → Gestão de IPs**, cadastre o 
 ### 2. Webhook — sandbox
 
 - Configure `PUBLIC_BASE_URL` apontando para URL acessível pela e.Rede (túnel em dev).
-- Ao salvar credenciais da rede em sandbox, o servidor tenta registrar a URL via API de simulação.
+- Ao salvar credenciais (rede ou posto) em sandbox, o servidor registra a URL via `POST .../v1/transactions/notification-URL` (campo `URL` no body).
 - URL a copiar no painel: `{PUBLIC_BASE_URL}/v1/public/erede/webhook/{rede_id}`.
 
 ### 3. Webhook — produção

@@ -10,15 +10,24 @@ import (
 	"strings"
 )
 
-type webhookRegisterRequest struct {
-	URL           string `json:"url"`
-	Authorization struct {
-		Type  string `json:"type"`
-		Token string `json:"token"`
-	} `json:"authorization"`
+// Payload conforme doc e.Rede sandbox: POST v1/transactions/notification-URL, campo "URL".
+type sandboxNotificationURLRequest struct {
+	URL           string                         `json:"URL"`
+	Authorization *sandboxNotificationURLAuth `json:"authorization,omitempty"`
 }
 
-// RegistrarWebhookSandbox cadastra URL de callback no PV de teste (sandbox).
+type sandboxNotificationURLAuth struct {
+	Type  string `json:"type"`
+	Token string `json:"token"`
+}
+
+type sandboxNotificationURLResponse struct {
+	ReturnCode    string `json:"returnCode"`
+	ReturnMessage string `json:"returnMessage"`
+}
+
+// RegistrarWebhookSandbox cadastra URL de callback Pix no PV de teste (sandbox).
+// Doc: https://developer.userede.com.br/e-rede — Simulação de notificação via webhook.
 func RegistrarWebhookSandbox(ctx context.Context, pv, clientSecret, ambiente, callbackURL, authType, authToken string) error {
 	callbackURL = strings.TrimSpace(callbackURL)
 	if callbackURL == "" {
@@ -27,15 +36,21 @@ func RegistrarWebhookSandbox(ctx context.Context, pv, clientSecret, ambiente, ca
 	if !strings.EqualFold(ambiente, "sandbox") {
 		return fmt.Errorf("registro automatico de webhook so em sandbox")
 	}
-	// Endpoint de simulação conforme documentação e.Rede (sandbox)
-	url := "https://sandbox-erede.useredecloud.com.br/v2/transactions/webhook"
-	var body webhookRegisterRequest
+	var body sandboxNotificationURLRequest
 	body.URL = callbackURL
-	body.Authorization.Type = strings.TrimSpace(authType)
-	if body.Authorization.Type == "" {
-		body.Authorization.Type = "Bearer"
+	authType = strings.TrimSpace(authType)
+	authToken = strings.TrimSpace(authToken)
+	if authType != "" && authToken != "" {
+		tok := authToken
+		low := strings.ToLower(authType)
+		if !strings.HasPrefix(strings.ToLower(tok), low+" ") {
+			tok = authType + " " + authToken
+		}
+		body.Authorization = &sandboxNotificationURLAuth{
+			Type:  authType,
+			Token: tok,
+		}
 	}
-	body.Authorization.Token = strings.TrimSpace(authToken)
 	raw, err := json.Marshal(body)
 	if err != nil {
 		return err
@@ -44,6 +59,8 @@ func RegistrarWebhookSandbox(ctx context.Context, pv, clientSecret, ambiente, ca
 	if err != nil {
 		return err
 	}
+	// Endpoint oficial sandbox (manual PDF): v1/transactions/notification-URL
+	url := "https://sandbox-erede.useredecloud.com.br/v1/transactions/notification-URL"
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, url, bytes.NewReader(raw))
 	if err != nil {
 		return err
@@ -58,6 +75,12 @@ func RegistrarWebhookSandbox(ctx context.Context, pv, clientSecret, ambiente, ca
 	b, _ := io.ReadAll(io.LimitReader(res.Body, 1<<16))
 	if res.StatusCode < 200 || res.StatusCode >= 300 {
 		return fmt.Errorf("registrar webhook sandbox status %d: %s", res.StatusCode, strings.TrimSpace(string(b)))
+	}
+	var out sandboxNotificationURLResponse
+	_ = json.Unmarshal(b, &out)
+	rc := strings.TrimSpace(out.ReturnCode)
+	if rc != "" && rc != "00" {
+		return fmt.Errorf("registrar webhook sandbox returnCode %s: %s", rc, strings.TrimSpace(out.ReturnMessage))
 	}
 	return nil
 }

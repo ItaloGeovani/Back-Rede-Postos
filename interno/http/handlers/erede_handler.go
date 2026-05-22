@@ -134,9 +134,17 @@ func (h *Handlers) ERedeGatewayPostoGestor(w http.ResponseWriter, r *http.Reques
 		utils.ResponderErro(w, http.StatusInternalServerError, "falha ao salvar")
 		return
 	}
+	wh := h.urlWebhookERedePosto(idRede, idPosto)
+	if amb == "sandbox" && wh != "" {
+		if err := erede.RegistrarWebhookSandbox(r.Context(), body.PV, body.ClientSecret, amb, wh, "Bearer", ""); err != nil {
+			log.Printf("erede webhook sandbox posto=%s rede=%s: %v", idPosto, idRede, err)
+		} else {
+			log.Printf("erede webhook sandbox registrado posto=%s url=%s", idPosto, wh)
+		}
+	}
 	utils.ResponderJSON(w, http.StatusOK, map[string]any{
 		"ok":          true,
-		"webhook_url": h.urlWebhookERedePosto(idRede, idPosto),
+		"webhook_url": wh,
 	})
 }
 
@@ -311,9 +319,12 @@ func (h *Handlers) putERedeGatewayPainel(w http.ResponseWriter, r *http.Request)
 		return
 	}
 	wh := h.urlWebhookERede(idRede)
-	ctx := r.Context()
 	if amb == "sandbox" && wh != "" {
-		_ = erede.RegistrarWebhookSandbox(ctx, body.PV, body.ClientSecret, amb, wh, "Bearer", "")
+		if err := erede.RegistrarWebhookSandbox(r.Context(), body.PV, body.ClientSecret, amb, wh, "Bearer", ""); err != nil {
+			log.Printf("erede webhook sandbox rede=%s: %v", idRede, err)
+		} else {
+			log.Printf("erede webhook sandbox registrado rede=%s url=%s", idRede, wh)
+		}
 	}
 	utils.ResponderJSON(w, http.StatusOK, map[string]any{"ok": true, "webhook_url": wh})
 }
