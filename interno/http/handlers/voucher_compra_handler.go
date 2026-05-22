@@ -106,20 +106,7 @@ func (h *Handlers) PostVoucherCompraPagar(w http.ResponseWriter, r *http.Request
 		utils.ResponderErro(w, http.StatusBadRequest, err.Error())
 		return
 	}
-	qr, qrB64 := servicos.ExtrairQRPixDoPagamento(pay)
-	utils.ResponderJSON(w, http.StatusOK, map[string]any{
-		"compra_id":        reg.ID,
-		"status":            reg.Status,
-		"payment_id":        pay.ID,
-		"valor_final":       reg.ValorFinal,
-		"tipo_beneficio":    reg.TipoBeneficio,
-		"cashback_percentual": reg.CashbackPercentual,
-		"cashback_previsto": reg.CashbackValor,
-		"expira_pagamento":  reg.ExpiraPagamento,
-		"qr_code":          qr,
-		"qr_code_base64":   qrB64,
-		"mp_status":        pay.Status,
-	})
+	utils.ResponderJSON(w, http.StatusOK, servicos.RespostaPixVoucherJSON(reg, pay))
 }
 
 // GetVoucherCompraPixRetomar GET /v1/eu/vouchers/pix-retomar?id= — QR/copia-e-cola a partir de compra ainda pendente (requery MP).
@@ -147,20 +134,7 @@ func (h *Handlers) GetVoucherCompraPixRetomar(w http.ResponseWriter, r *http.Req
 		utils.ResponderErro(w, http.StatusBadRequest, err.Error())
 		return
 	}
-	qr, qrB64 := servicos.ExtrairQRPixDoPagamento(pay)
-	utils.ResponderJSON(w, http.StatusOK, map[string]any{
-		"compra_id":        reg.ID,
-		"status":            reg.Status,
-		"payment_id":        pay.ID,
-		"valor_final":       reg.ValorFinal,
-		"tipo_beneficio":    reg.TipoBeneficio,
-		"cashback_percentual": reg.CashbackPercentual,
-		"cashback_previsto": reg.CashbackValor,
-		"expira_pagamento":  reg.ExpiraPagamento,
-		"qr_code":           qr,
-		"qr_code_base64":   qrB64,
-		"mp_status":         pay.Status,
-	})
+	utils.ResponderJSON(w, http.StatusOK, servicos.RespostaPixVoucherJSON(reg, pay))
 }
 
 // GetVoucherCompras GET /v1/eu/vouchers

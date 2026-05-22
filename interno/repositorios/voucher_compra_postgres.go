@@ -33,16 +33,16 @@ func (r *voucherCompraPostgres) CriarPendenteComPix(x *VoucherCompraRegistro) er
 INSERT INTO voucher_compras (
   id, rede_id, usuario_id, campanha_id, combustivel_rede_id, posto_id_compra, valor_solicitado, desconto_aplicado, valor_final,
   tipo_beneficio, cashback_percentual, cashback_valor, litros, status,
-  mp_payment_id, referencia_pagamento, expira_pagamento_em, criado_em, atualizado_em
+  gateway_provedor, gateway_tid, mp_payment_id, referencia_pagamento, expira_pagamento_em, criado_em, atualizado_em
 ) VALUES (
   $1::uuid, $2::uuid, $3::uuid, $4, $5, $6, $7, $8, $9,
   $10, $11, $12, $13, $14::status_voucher_compra,
-  $15, $16, $17, NOW(), NOW()
+  $15, $16, $17, $18, $19, NOW(), NOW()
 )
 RETURNING id::text, criado_em, atualizado_em
 `, x.ID, x.RedeID, x.UsuarioID, camp, comb, nullUUIDString(x.PostoCompraID), x.ValorSolicitado, x.DescontoAplicado, x.ValorFinal,
 		emptyAsDefault(x.TipoBeneficio, "DESCONTO"), nullFloat64IfPositive(x.CashbackPercentual), x.CashbackValor, nullFloat64Ptr(x.Litros), x.Status,
-		mpID, nullStringPtr(ref), x.ExpiraPagamento,
+		nullStringPtr(x.GatewayProvedor), nullStringPtrPtr(x.GatewayTID), mpID, nullStringPtr(ref), x.ExpiraPagamento,
 	).Scan(&x.ID, &x.CriadoEm, &x.AtualizadoEm)
 }
 
@@ -51,6 +51,13 @@ func nullStringPtr(s string) any {
 		return nil
 	}
 	return s
+}
+
+func nullStringPtrPtr(p *string) any {
+	if p == nil || strings.TrimSpace(*p) == "" {
+		return nil
+	}
+	return strings.TrimSpace(*p)
 }
 
 func nullFloat64Ptr(f *float64) any {
@@ -483,6 +490,43 @@ GROUP BY campanha_id
 		}
 	}
 	return out, rows.Err()
+}
+
+func (r *voucherCompraPostgres) BuscarPorGatewayTIDRede(gatewayTID, redeID string) (*VoucherCompraRegistro, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	gatewayTID = strings.TrimSpace(gatewayTID)
+	redeID = strings.TrimSpace(redeID)
+	if gatewayTID == "" || redeID == "" {
+		return nil, ErrVoucherCompraNaoEncontrado
+	}
+	const q = `
+SELECT
+  v.id::text, v.rede_id::text, v.usuario_id::text, v.campanha_id::text,
+  v.valor_solicitado, v.desconto_aplicado, v.valor_final,
+  v.tipo_beneficio, v.cashback_percentual::float8, v.cashback_valor::float8, v.cashback_creditado_em,
+  v.litros::float8, v.status::text,
+  v.mp_payment_id, v.referencia_pagamento, v.codigo_resgate, v.expira_pagamento_em, v.expira_resgate_em, v.criado_em, v.atualizado_em,
+  v.combustivel_rede_id::text,
+  COALESCE(NULLIF(TRIM(comb.nome), ''), ''),
+  v.posto_id_compra::text,
+  v.usado_em, v.posto_id_uso::text,
+  COALESCE(NULLIF(TRIM(pu.nome), ''), ''),
+  v.operador_usuario_id::text, v.operador_papel, v.operador_nome_snapshot
+FROM voucher_compras v
+LEFT JOIN rede_combustiveis comb ON comb.id = v.combustivel_rede_id AND comb.rede_id = v.rede_id
+LEFT JOIN postos pu ON pu.id = v.posto_id_uso AND pu.rede_id = v.rede_id
+WHERE v.gateway_tid = $1 AND v.rede_id = $2::uuid
+LIMIT 1`
+	var x VoucherCompraRegistro
+	err := scanVcr(r.db.QueryRowContext(ctx, q, gatewayTID, redeID), &x)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, ErrVoucherCompraNaoEncontrado
+		}
+		return nil, err
+	}
+	return &x, nil
 }
 
 func (r *voucherCompraPostgres) BuscarPorIDRede(id, redeID string) (*VoucherCompraRegistro, error) {

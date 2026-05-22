@@ -219,6 +219,8 @@ func (h *Handlers) PublicRedeInfo(w http.ResponseWriter, r *http.Request) {
 		"app_modulo_gire_ganhe":     rede.AppModuloGireGanhe,
 		"app_modulo_redes_sociais":  rede.AppModuloRedesSociais,
 		"gateway_pagamento_modo":    servicos.NormalizarGatewayPagamentoModo(rede.GatewayPagamentoModo),
+		"gateway_provedor_ativo":    servicos.NormalizarGatewayProvedorAtivo(rede.GatewayProvedorAtivo),
+		"gateway_meios_habilitados": rede.GatewayMeiosHabilitados,
 		"rede_logo_url":             h.resolveRedeLogoURLPublic(idRede),
 	}
 	if h.niveisCliente != nil {

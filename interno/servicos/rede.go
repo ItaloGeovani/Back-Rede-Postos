@@ -18,6 +18,7 @@ type ServicoRede interface {
 	EditarMoedaVirtual(input EditarMoedaVirtualRedeInput) (*modelos.Rede, error)
 	EditarVoucherConfig(input EditarVoucherConfigRedeInput) (*modelos.Rede, error)
 	EditarGatewayPagamentoModo(idRede, modo string) (*modelos.Rede, error)
+	EditarGatewayProvedor(idRede, provedor string, meios modelos.GatewayMeiosHabilitados) (*modelos.Rede, error)
 	EditarAppModulos(input EditarAppModulosRedeInput) (*modelos.Rede, error)
 	Ativar(id string) (*modelos.Rede, error)
 	Desativar(id string) (*modelos.Rede, error)
@@ -174,6 +175,22 @@ func (s *servicoRede) EditarMoedaVirtual(input EditarMoedaVirtualRedeInput) (*mo
 	return s.repo.Atualizar(input.ID, func(r *modelos.Rede) error {
 		r.MoedaVirtualNome = input.MoedaVirtualNome
 		r.MoedaVirtualCotacao = input.MoedaVirtualCotacao
+		return nil
+	})
+}
+
+func (s *servicoRede) EditarGatewayProvedor(idRede, provedor string, meios modelos.GatewayMeiosHabilitados) (*modelos.Rede, error) {
+	idRede = strings.TrimSpace(idRede)
+	provedor = NormalizarGatewayProvedorAtivo(provedor)
+	if idRede == "" {
+		return nil, ErrDadosInvalidos
+	}
+	if err := ValidarMeiosParaProvedor(provedor, meios); err != nil {
+		return nil, err
+	}
+	return s.repo.Atualizar(idRede, func(r *modelos.Rede) error {
+		r.GatewayProvedorAtivo = provedor
+		r.GatewayMeiosHabilitados = meios
 		return nil
 	})
 }

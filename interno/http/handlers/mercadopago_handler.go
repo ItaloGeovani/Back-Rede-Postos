@@ -117,7 +117,7 @@ func (h *Handlers) MercadoPagoWebhookPublico(w http.ResponseWriter, r *http.Requ
 	}
 
 	if h.voucherCompraSvc != nil {
-		h.voucherCompraSvc.ProcessarPagamentoAprovadoWebhook(idRede, pay)
+		h.voucherCompraSvc.ProcessarPagamentoAprovadoMercadoPago(idRede, strings.TrimSpace(pay.ExternalReference))
 	}
 	servicos.LogPagamentoAprovadoWebhook(idRede, paymentID, pay.ExternalReference, pay.Status)
 	w.WriteHeader(http.StatusOK)
@@ -237,7 +237,9 @@ func (h *Handlers) getMercadoPagoGatewayPainel(w http.ResponseWriter, r *http.Re
 	}
 	modo := servicos.NormalizarGatewayPagamentoModo(rede.GatewayPagamentoModo)
 	out := map[string]any{
-		"gateway_pagamento_modo": modo,
+		"gateway_pagamento_modo":    modo,
+		"gateway_provedor_ativo":    servicos.NormalizarGatewayProvedorAtivo(rede.GatewayProvedorAtivo),
+		"gateway_meios_habilitados": rede.GatewayMeiosHabilitados,
 	}
 
 	if u != nil && u.Papel == modelos.PapelGerentePosto {

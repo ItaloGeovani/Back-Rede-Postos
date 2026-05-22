@@ -21,6 +21,7 @@ type Handlers struct {
 	appMobileRedeRepo      repositorios.AppMobileRedeRepositorio
 	appCardsRepo           repositorios.AppCardsRedeRepositorio
 	mpGatewayRepo          repositorios.MercadoPagoGatewayRepositorio
+	eredeGatewayRepo       repositorios.ERedeGatewayRepositorio
 	voucherCompraSvc       *servicos.ServicoVoucherCompra
 	combustivelRedeService *servicos.ServicoCombustivelRede
 	indiqueGanhe           *servicos.ServicoIndiqueGanhe
@@ -48,6 +49,7 @@ func Novos(
 	appMobileRedeRepo repositorios.AppMobileRedeRepositorio,
 	appCardsRepo repositorios.AppCardsRedeRepositorio,
 	mpGatewayRepo repositorios.MercadoPagoGatewayRepositorio,
+	eredeGatewayRepo repositorios.ERedeGatewayRepositorio,
 	voucherCompraSvc *servicos.ServicoVoucherCompra,
 	combustivelRedeService *servicos.ServicoCombustivelRede,
 	indiqueGanhe *servicos.ServicoIndiqueGanhe,
@@ -74,6 +76,7 @@ func Novos(
 		appMobileRedeRepo:      appMobileRedeRepo,
 		appCardsRepo:           appCardsRepo,
 		mpGatewayRepo:          mpGatewayRepo,
+		eredeGatewayRepo:       eredeGatewayRepo,
 		voucherCompraSvc:       voucherCompraSvc,
 		combustivelRedeService: combustivelRedeService,
 		indiqueGanhe:           indiqueGanhe,

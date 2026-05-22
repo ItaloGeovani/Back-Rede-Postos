@@ -3,6 +3,7 @@ package repositorios
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"errors"
 	"strings"
 	"time"
@@ -41,6 +42,8 @@ SELECT
   COALESCE(voucher_dias_validade_resgate, 7),
   COALESCE(voucher_minutos_expira_pagamento_pix, 30),
   COALESCE(gateway_pagamento_modo, 'REDE'),
+  COALESCE(gateway_provedor_ativo, 'MERCADO_PAGO'),
+  COALESCE(gateway_meios_habilitados, '{"pix":true}'::jsonb),
   COALESCE(app_modulo_indique_ganhe, false),
   COALESCE(app_modulo_checkin_diario, false),
   COALESCE(app_modulo_gire_ganhe, false),
@@ -93,6 +96,8 @@ SELECT
   COALESCE(voucher_dias_validade_resgate, 7),
   COALESCE(voucher_minutos_expira_pagamento_pix, 30),
   COALESCE(gateway_pagamento_modo, 'REDE'),
+  COALESCE(gateway_provedor_ativo, 'MERCADO_PAGO'),
+  COALESCE(gateway_meios_habilitados, '{"pix":true}'::jsonb),
   COALESCE(app_modulo_indique_ganhe, false),
   COALESCE(app_modulo_checkin_diario, false),
   COALESCE(app_modulo_gire_ganhe, false),
@@ -188,6 +193,8 @@ SELECT
   COALESCE(voucher_dias_validade_resgate, 7),
   COALESCE(voucher_minutos_expira_pagamento_pix, 30),
   COALESCE(gateway_pagamento_modo, 'REDE'),
+  COALESCE(gateway_provedor_ativo, 'MERCADO_PAGO'),
+  COALESCE(gateway_meios_habilitados, '{"pix":true}'::jsonb),
   COALESCE(app_modulo_indique_ganhe, false),
   COALESCE(app_modulo_checkin_diario, false),
   COALESCE(app_modulo_gire_ganhe, false),
@@ -230,10 +237,12 @@ SET
   voucher_dias_validade_resgate = $15,
   voucher_minutos_expira_pagamento_pix = $16,
   gateway_pagamento_modo = $17,
-  app_modulo_indique_ganhe = $18,
-  app_modulo_checkin_diario = $19,
-  app_modulo_gire_ganhe = $20,
-  app_modulo_redes_sociais = $21,
+  gateway_provedor_ativo = $18,
+  gateway_meios_habilitados = $19::jsonb,
+  app_modulo_indique_ganhe = $20,
+  app_modulo_checkin_diario = $21,
+  app_modulo_gire_ganhe = $22,
+  app_modulo_redes_sociais = $23,
   atualizado_em = NOW()
 WHERE id = $1
 RETURNING atualizado_em`
@@ -263,6 +272,8 @@ RETURNING atualizado_em`
 		rede.VoucherDiasValidadeResgate,
 		rede.VoucherMinutosExpiraPagamentoPix,
 		normalizarGatewayPagamentoModoRede(rede.GatewayPagamentoModo),
+		normalizarGatewayProvedorRede(rede.GatewayProvedorAtivo),
+		mustGatewayMeiosJSON(rede.GatewayMeiosHabilitados),
 		rede.AppModuloIndiqueGanhe,
 		rede.AppModuloCheckinDiario,
 		rede.AppModuloGireGanhe,
@@ -285,6 +296,7 @@ type scannerRede interface {
 func scanRede(s scannerRede) (*modelos.Rede, error) {
 	var rede modelos.Rede
 	var primeiro sql.NullTime
+	var meiosRaw []byte
 
 	err := s.Scan(
 		&rede.ID,
@@ -302,6 +314,8 @@ func scanRede(s scannerRede) (*modelos.Rede, error) {
 		&rede.VoucherDiasValidadeResgate,
 		&rede.VoucherMinutosExpiraPagamentoPix,
 		&rede.GatewayPagamentoModo,
+		&rede.GatewayProvedorAtivo,
+		&meiosRaw,
 		&rede.AppModuloIndiqueGanhe,
 		&rede.AppModuloCheckinDiario,
 		&rede.AppModuloGireGanhe,
@@ -319,7 +333,25 @@ func scanRede(s scannerRede) (*modelos.Rede, error) {
 	if strings.TrimSpace(rede.GatewayPagamentoModo) == "" {
 		rede.GatewayPagamentoModo = modelos.GatewayPagamentoModoRede
 	}
+	rede.GatewayProvedorAtivo = normalizarGatewayProvedorRede(rede.GatewayProvedorAtivo)
+	rede.GatewayMeiosHabilitados = modelos.ParseGatewayMeiosJSON(meiosRaw)
 	return &rede, nil
+}
+
+func normalizarGatewayProvedorRede(s string) string {
+	s = strings.ToUpper(strings.TrimSpace(s))
+	if s == modelos.GatewayProvedorERede {
+		return modelos.GatewayProvedorERede
+	}
+	return modelos.GatewayProvedorMercadoPago
+}
+
+func mustGatewayMeiosJSON(m modelos.GatewayMeiosHabilitados) []byte {
+	b, err := json.Marshal(m)
+	if err != nil || len(b) == 0 {
+		b, _ = json.Marshal(modelos.MeiosPadrao())
+	}
+	return b
 }
 
 func mapearErroRedePostgres(err error) error {

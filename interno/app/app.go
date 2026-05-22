@@ -166,6 +166,7 @@ func Nova() (*Aplicacao, error) {
 	repoAppMobileRede := repositorios.NovoAppMobileRedePostgres(banco)
 	repoAppCards := repositorios.NovoAppCardsRedePostgres(banco)
 	repoMercadoPagoGateway := repositorios.NovoMercadoPagoGatewayPostgres(banco)
+	repoERedeGateway := repositorios.NovoERedeGatewayPostgres(banco)
 	repoVoucherCompra := repositorios.NovoVoucherCompraPostgres(banco)
 	repoCombustivelRede := repositorios.NovoCombustivelRedePostgres(banco)
 	repoCarteira := repositorios.NovoCarteiraPostgres(banco)
@@ -196,7 +197,7 @@ func Nova() (*Aplicacao, error) {
 	svcGireGanhe := servicos.NovoServicoGireGanhe(banco, repoGireGanhe, repoCarteira, svcNiveisCliente, svcUsuarioRede)
 	svcPosto := servicos.NovoServicoPosto(repoPosto, repoRede)
 	svcCampanha := servicos.NovoServicoCampanha(repoCampanha, repoRede, repoCombustivelRede)
-	svcVoucherCompra := servicos.NovoServicoVoucherCompra(repoVoucherCompra, svcCampanha, repoMercadoPagoGateway, repoRede, repoCarteira, repoCombustivelRede, repoUsuarioRede, cfg, svcIndiqueGanhe)
+	svcVoucherCompra := servicos.NovoServicoVoucherCompra(repoVoucherCompra, svcCampanha, repoMercadoPagoGateway, repoERedeGateway, repoRede, repoCarteira, repoCombustivelRede, repoUsuarioRede, cfg, svcIndiqueGanhe)
 	svcCombustivelRede := servicos.NovoServicoCombustivelRede(repoCombustivelRede, repoRede)
 	svcPremio := servicos.NovoServicoPremio(repoPremio, repoRede)
 	if err := bootstrapAdminPadrao(cfg, svcAdmin); err != nil {
@@ -205,7 +206,7 @@ func Nova() (*Aplicacao, error) {
 	}
 
 	svcUploadImagem := servicos.NovoServicoUploadImagem(cfg)
-	h := handlers.Novos(autenticador, svcAdmin, svcGestor, svcRede, svcUsuarioRede, svcPosto, svcCampanha, svcPremio, repoAuditoria, estatisticasPlataforma, repoAppMobile, repoAppMobileRede, repoAppCards, repoMercadoPagoGateway, svcVoucherCompra, svcCombustivelRede, svcIndiqueGanhe, repoCarteira, svcNiveisCliente, svcCheckinDiario, svcGireGanhe, repoLinksSociais, svcUploadImagem, cfg)
+	h := handlers.Novos(autenticador, svcAdmin, svcGestor, svcRede, svcUsuarioRede, svcPosto, svcCampanha, svcPremio, repoAuditoria, estatisticasPlataforma, repoAppMobile, repoAppMobileRede, repoAppCards, repoMercadoPagoGateway, repoERedeGateway, svcVoucherCompra, svcCombustivelRede, svcIndiqueGanhe, repoCarteira, svcNiveisCliente, svcCheckinDiario, svcGireGanhe, repoLinksSociais, svcUploadImagem, cfg)
 
 	muxPrincipal := http.NewServeMux()
 	mwGlobal := []middlewares.Middleware{

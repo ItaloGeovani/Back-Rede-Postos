@@ -3,7 +3,7 @@ package modelos
 import "time"
 
 const (
-	GatewayPagamentoModoRede = "REDE"
+	GatewayPagamentoModoRede  = "REDE"
 	GatewayPagamentoModoPosto = "POSTO"
 )
 
@@ -26,6 +26,10 @@ type Rede struct {
 	VoucherMinutosExpiraPagamentoPix int `json:"voucher_minutos_expira_pagamento_pix"`
 	// GatewayPagamentoModo: REDE (conta única) ou POSTO (conta por unidade).
 	GatewayPagamentoModo string `json:"gateway_pagamento_modo"`
+	// GatewayProvedorAtivo: MERCADO_PAGO ou E_REDE (exclusivo).
+	GatewayProvedorAtivo string `json:"gateway_provedor_ativo"`
+	// GatewayMeiosHabilitados: pix, cartao_credito, cartao_debito.
+	GatewayMeiosHabilitados GatewayMeiosHabilitados `json:"gateway_meios_habilitados"`
 	// Módulos opcionais do app (painel: Configuracoes; padrao false).
 	AppModuloIndiqueGanhe  bool      `json:"app_modulo_indique_ganhe"`
 	AppModuloCheckinDiario bool      `json:"app_modulo_checkin_diario"`

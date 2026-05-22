@@ -17,7 +17,6 @@ import (
 	"gaspass-servidor/interno/repositorios"
 
 	"github.com/google/uuid"
-	"github.com/mercadopago/sdk-go/pkg/payment"
 )
 
 const (
@@ -48,6 +47,7 @@ type ServicoVoucherCompra struct {
 	campanha   ServicoCampanha
 	combustive repositorios.CombustivelRedeRepositorio
 	mpGW       repositorios.MercadoPagoGatewayRepositorio
+	eredeGW    repositorios.ERedeGatewayRepositorio
 	rede       repositorios.RedeRepositorio
 	carteira   repositorios.CarteiraRepositorio
 	fcm        repositorios.FCMListador
@@ -59,6 +59,7 @@ func NovoServicoVoucherCompra(
 	repo repositorios.VoucherCompraRepositorio,
 	camp ServicoCampanha,
 	mp repositorios.MercadoPagoGatewayRepositorio,
+	erede repositorios.ERedeGatewayRepositorio,
 	rede repositorios.RedeRepositorio,
 	carteira repositorios.CarteiraRepositorio,
 	comb repositorios.CombustivelRedeRepositorio,
@@ -66,7 +67,7 @@ func NovoServicoVoucherCompra(
 	cfg config.Config,
 	ind *ServicoIndiqueGanhe,
 ) *ServicoVoucherCompra {
-	return &ServicoVoucherCompra{repo: repo, campanha: camp, mpGW: mp, rede: rede, carteira: carteira, combustive: comb, fcm: fcm, cfg: cfg, indique: ind}
+	return &ServicoVoucherCompra{repo: repo, campanha: camp, mpGW: mp, eredeGW: erede, rede: rede, carteira: carteira, combustive: comb, fcm: fcm, cfg: cfg, indique: ind}
 }
 
 func (s *ServicoVoucherCompra) duracaoPagamentoPix(idRede string) time.Duration {
@@ -335,7 +336,7 @@ func normalizarPercentual(v float64) float64 {
 func (s *ServicoVoucherCompra) PagarComPixInicia(ctx context.Context, idRede, idUsuario string, valor float64, idCampanha *string,
 	idCombustivelRede *string, litros *float64, idPosto string,
 	payerEmail, docTipo, docNumero string, agora time.Time,
-) (*repositorios.VoucherCompraRegistro, *payment.Response, error) {
+) (*repositorios.VoucherCompraRegistro, *PixCobrancaResult, error) {
 	if strings.TrimSpace(idRede) == "" || strings.TrimSpace(idUsuario) == "" {
 		return nil, nil, ErrDadosInvalidos
 	}
@@ -372,7 +373,7 @@ func (s *ServicoVoucherCompra) PagarComPixInicia(ctx context.Context, idRede, id
 		return nil, nil, errors.New("valor final apos desconto deve ser pelo menos R$ 1,00")
 	}
 
-	gw, err := ResolverGatewayPagamento(s.rede, s.mpGW, s.cfg, idRede, idPosto)
+	gw, err := ResolverGatewayPagamento(s.rede, s.mpGW, s.eredeGW, s.cfg, idRede, idPosto)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -381,19 +382,22 @@ func (s *ServicoVoucherCompra) PagarComPixInicia(ctx context.Context, idRede, id
 	ref := prefixoRefVoucherCompra + idCompra
 	expP := agora.Add(s.duracaoPagamentoPix(idRede))
 
-	res, err := CriarCobrancaPixMercadoPago(ctx, gw.AccessToken, CriarCobrancaPixMercadoPagoInput{
+	notifURL := gw.MpWebhookURL
+	if gw.Provedor == modelos.GatewayProvedorERede {
+		notifURL = gw.ERedeWebhookURL
+	}
+	res, err := CriarPixVoucher(ctx, gw, CriarPixVoucherInput{
 		Valor:             calc.ValorFinal,
-		Descricao:         "Voucher Auto Posto",
+		Referencia:        ref,
 		PayerEmail:        payerEmail,
 		DocTipo:           docTipo,
 		DocNumero:         docNumero,
-		ExternalReference: ref,
-		NotificationURL:   gw.WebhookURL,
-	})
+		NotificationURL:   notifURL,
+	}, expP)
 	if err != nil {
 		return nil, nil, err
 	}
-	mpid := int64(res.ID)
+	tid := strings.TrimSpace(res.IDExterno)
 	reg := &repositorios.VoucherCompraRegistro{
 		ID:                  idCompra,
 		RedeID:              idRede,
@@ -405,10 +409,17 @@ func (s *ServicoVoucherCompra) PagarComPixInicia(ctx context.Context, idRede, id
 		CashbackPercentual:  calc.CashbackPercentual,
 		CashbackValor:       calc.CashbackPrevisto,
 		Status:              "AGUARDANDO_PAGAMENTO",
-		MpPaymentID:         &mpid,
+		GatewayProvedor:     gw.Provedor,
 		ReferenciaPagamento: &ref,
 		ExpiraPagamento:     &expP,
 		PostoCompraID:       gw.PostoIDCompra,
+	}
+	if tid != "" {
+		reg.GatewayTID = &tid
+	}
+	if res.PaymentIDNumerico > 0 {
+		mpid := res.PaymentIDNumerico
+		reg.MpPaymentID = &mpid
 	}
 	if idCampanha != nil && strings.TrimSpace(*idCampanha) != "" {
 		s := strings.TrimSpace(*idCampanha)
@@ -431,7 +442,7 @@ func (s *ServicoVoucherCompra) PagarComPixInicia(ctx context.Context, idRede, id
 // RetomarDadosPixPendente reconsulta o payment no MP e devolve o QR (na DB só há mp_payment_id, não a string do QR).
 // Útil para o cliente reabrir o ecrã PIX a partir da lista "aguardando pagamento".
 func (s *ServicoVoucherCompra) RetomarDadosPixPendente(ctx context.Context, idCompra, idRede, idUsuario string) (
-	reg *repositorios.VoucherCompraRegistro, pay *payment.Response, err error,
+	reg *repositorios.VoucherCompraRegistro, pix *PixCobrancaResult, err error,
 ) {
 	vc, err := s.repo.BuscarPorID(idCompra, idUsuario, idRede)
 	if err != nil {
@@ -440,37 +451,45 @@ func (s *ServicoVoucherCompra) RetomarDadosPixPendente(ctx context.Context, idCo
 	if vc.Status != "AGUARDANDO_PAGAMENTO" {
 		return nil, nil, errors.New("este voucher nao esta a aguardar pagamento")
 	}
-	if vc.MpPaymentID == nil {
-		return nil, nil, errors.New("pagamento mercado pago nao associado a esta compra")
+	if vc.MpPaymentID == nil && (vc.GatewayTID == nil || strings.TrimSpace(*vc.GatewayTID) == "") {
+		return nil, nil, errors.New("pagamento nao associado a esta compra")
 	}
 	if vc.ExpiraPagamento != nil && time.Now().After(*vc.ExpiraPagamento) {
 		return nil, nil, errors.New("prazo de pagamento deste pix expirou; gere outro voucher")
 	}
-	creds, err := s.mpGW.BuscarPorRedeID(idRede)
-	if err != nil {
-		if errors.Is(err, repositorios.ErrMercadoPagoGatewayNaoConfigurado) {
-			return nil, nil, errors.New("rede sem mercado pago configurado")
-		}
-		return nil, nil, err
+	idPosto := ""
+	if vc.PostoCompraID != nil {
+		idPosto = strings.TrimSpace(*vc.PostoCompraID)
 	}
-	if strings.TrimSpace(creds.AccessToken) == "" {
-		return nil, nil, errors.New("rede sem mp_access_token")
-	}
-	pay, err = ConsultarPagamentoMercadoPago(ctx, creds.AccessToken, int(*vc.MpPaymentID))
+	gw, err := ResolverGatewayPagamento(s.rede, s.mpGW, s.eredeGW, s.cfg, idRede, idPosto)
 	if err != nil {
 		return nil, nil, err
 	}
-	switch strings.TrimSpace(pay.Status) {
+	provedor := strings.TrimSpace(vc.GatewayProvedor)
+	if provedor == "" {
+		provedor = gw.Provedor
+	}
+	pix, err = ConsultarPixVoucher(ctx, gw, provedor, gatewayTIDStr(vc), vc.MpPaymentID)
+	if err != nil {
+		return nil, nil, err
+	}
+	switch strings.TrimSpace(pix.Status) {
 	case "approved":
 		return nil, nil, errors.New("pagamento ja confirmado; actualize a lista de vouchers")
 	case "rejected", "cancelled", "refunded", "charged_back":
-		return nil, nil, fmt.Errorf("cobranca nao esta pendente (status: %s)", pay.Status)
+		return nil, nil, fmt.Errorf("cobranca nao esta pendente (status: %s)", pix.Status)
 	}
-	qr, _ := ExtrairQRPixDoPagamento(pay)
-	if strings.TrimSpace(qr) == "" {
+	if strings.TrimSpace(pix.QrCode) == "" {
 		return nil, nil, errors.New("qr pix indisponivel; tente gerar outro pagamento no app")
 	}
-	return vc, pay, nil
+	return vc, pix, nil
+}
+
+func gatewayTIDStr(vc *repositorios.VoucherCompraRegistro) string {
+	if vc == nil || vc.GatewayTID == nil {
+		return ""
+	}
+	return strings.TrimSpace(*vc.GatewayTID)
 }
 
 // ListarMeus do cliente.
@@ -576,16 +595,42 @@ func (s *ServicoVoucherCompra) ListarPainelPorRede(idRede string, limite, offset
 	return s.repo.ListarPainelPorRede(idRede, limite, offset, status)
 }
 
-// ProcessarPagamentoAprovadoWebhook chamado do webhook MP quando o pagamento está approved.
-func (s *ServicoVoucherCompra) ProcessarPagamentoAprovadoWebhook(idRede string, pay *payment.Response) {
-	if pay == nil {
-		return
-	}
-	ref := strings.TrimSpace(pay.ExternalReference)
+// ProcessarPagamentoAprovadoPorReferencia ativa voucher após pagamento confirmado (MP ou e.Rede).
+func (s *ServicoVoucherCompra) ProcessarPagamentoAprovadoPorReferencia(idRede, ref string) {
+	ref = strings.TrimSpace(ref)
 	idCompra, ok := parseRefVcompra(ref)
 	if !ok {
 		return
 	}
+	s.processarAtivacaoVoucher(idRede, idCompra)
+}
+
+// ProcessarPagamentoAprovadoMercadoPago webhook MP (external_reference = vcompra:uuid).
+func (s *ServicoVoucherCompra) ProcessarPagamentoAprovadoMercadoPago(idRede, ref string) {
+	s.ProcessarPagamentoAprovadoPorReferencia(idRede, ref)
+}
+
+// ProcessarPagamentoAprovadoERede webhook e.Rede por tid (busca referencia na compra).
+func (s *ServicoVoucherCompra) ProcessarPagamentoAprovadoERede(idRede, tid string) {
+	tid = strings.TrimSpace(tid)
+	if tid == "" {
+		return
+	}
+	// Buscar por gateway_tid via BuscarPorIDRede após achar compra - usar repo se existir
+	// Fallback: consultar não temos list by tid - add repo method or search
+	vc, err := s.repo.BuscarPorGatewayTIDRede(tid, idRede)
+	if err != nil {
+		log.Printf("voucher erede webhook: buscar tid=%s: %v", tid, err)
+		return
+	}
+	if vc.ReferenciaPagamento != nil {
+		s.ProcessarPagamentoAprovadoPorReferencia(idRede, *vc.ReferenciaPagamento)
+		return
+	}
+	s.processarAtivacaoVoucher(idRede, vc.ID)
+}
+
+func (s *ServicoVoucherCompra) processarAtivacaoVoucher(idRede, idCompra string) {
 	vc, err := s.repo.BuscarPorIDRede(idCompra, idRede)
 	if err != nil {
 		log.Printf("voucher webhook: buscar %s: %v", idCompra, err)

@@ -98,6 +98,12 @@ func (r *redeMemoria) Criar(rede *modelos.Rede) error {
 	if strings.TrimSpace(copia.GatewayPagamentoModo) == "" {
 		copia.GatewayPagamentoModo = modelos.GatewayPagamentoModoRede
 	}
+	if strings.TrimSpace(copia.GatewayProvedorAtivo) == "" {
+		copia.GatewayProvedorAtivo = modelos.GatewayProvedorMercadoPago
+	}
+	if !copia.GatewayMeiosHabilitados.Pix && !copia.GatewayMeiosHabilitados.CartaoCredito && !copia.GatewayMeiosHabilitados.CartaoDebito {
+		copia.GatewayMeiosHabilitados = modelos.MeiosPadrao()
+	}
 	now := time.Now().UTC()
 	copia.CriadoEm = now
 	copia.AtualizadoEm = now

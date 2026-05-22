@@ -43,6 +43,8 @@ type VoucherCompraRegistro struct {
 	CombustivelRedeNome string     `json:"combustivel_rede_nome,omitempty"`
 	Status              string     `json:"status"`
 	MpPaymentID         *int64     `json:"mp_payment_id,omitempty"`
+	GatewayProvedor     string     `json:"gateway_provedor,omitempty"`
+	GatewayTID          *string    `json:"gateway_tid,omitempty"`
 	ReferenciaPagamento *string   `json:"referencia_pagamento,omitempty"`
 	CodigoResgate       *string    `json:"codigo_resgate,omitempty"`
 	ExpiraPagamento     *time.Time `json:"expira_pagamento_em,omitempty"`
@@ -104,6 +106,7 @@ type VoucherCompraRepositorio interface {
 	// Contar usos aprovados (status ATIVO ou USADO) por campanha, para o app exibir 1/x.
 	ListarUsosAprovadosPorCampanha(redeID, usuarioID string) (map[string]int, error)
 	BuscarPorIDRede(id, redeID string) (*VoucherCompraRegistro, error)
+	BuscarPorGatewayTIDRede(gatewayTID, redeID string) (*VoucherCompraRegistro, error)
 	AtivarPagamentoAprovado(id, redeID, codigo string, expiraResgate time.Time) error
 	MarcarCashbackCreditado(id, redeID string, creditadoEm time.Time) (bool, error)
 	// BuscarPorCodigoResgateConsultaEquipe voucher da rede por código de resgate + dados do cliente (nome/e-mail).
