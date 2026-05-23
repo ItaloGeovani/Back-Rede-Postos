@@ -88,11 +88,16 @@ func ConsultarPixVoucher(ctx context.Context, gw *GatewayContext, provedor, gate
 		if erede.TransacaoAprovadaPix(tx) {
 			st = "approved"
 		}
+		ref := strings.TrimSpace(tx.Reference)
+		if tx.Authorization != nil && strings.TrimSpace(tx.Authorization.Reference) != "" {
+			ref = strings.TrimSpace(tx.Authorization.Reference)
+		}
 		return &PixCobrancaResult{
-			Provedor:   modelos.GatewayProvedorERede,
-			IDExterno:  tid,
-			Status:     st,
-			Referencia: strings.TrimSpace(tx.Reference),
+			Provedor:           modelos.GatewayProvedorERede,
+			IDExterno:          tid,
+			Status:             st,
+			GatewayStatusLabel: erede.StatusPixLabel(tx),
+			Referencia:         ref,
 		}, nil
 	default:
 		if mpPaymentID == nil {

@@ -580,6 +580,7 @@ func (s *ServicoVoucherCompra) tentarSincronizarStatusPixPendente(ctx context.Co
 	}
 	gw, err := ResolverGatewayPagamento(s.rede, s.mpGW, s.eredeGW, s.cfg, idRede, idPosto)
 	if err != nil {
+		log.Printf("voucher_pix sync: gateway compra=%s: %v", vc.ID, err)
 		return
 	}
 	provedor := strings.TrimSpace(vc.GatewayProvedor)

@@ -11,13 +11,14 @@ import (
 
 // PixCobrancaResult resposta unificada de criação/consulta PIX (MP ou e.Rede).
 type PixCobrancaResult struct {
-	Provedor          string
-	IDExterno         string
-	QrCode            string
-	QrCodeBase64      string
-	Status            string
-	Referencia        string
-	PaymentIDNumerico int64 // MP: payment id; e.Rede: 0
+	Provedor             string
+	IDExterno            string
+	QrCode               string
+	QrCodeBase64         string
+	Status               string
+	GatewayStatusLabel   string // e.Rede: authorization.status (logs)
+	Referencia           string
+	PaymentIDNumerico    int64 // MP: payment id; e.Rede: 0
 }
 
 // CriarPixVoucherInput dados para criar cobrança PIX de voucher.

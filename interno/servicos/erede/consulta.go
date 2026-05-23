@@ -9,12 +9,49 @@ import (
 	"strings"
 )
 
-type transactionResponse struct {
+type authorizationBlock struct {
 	TID        string `json:"tid"`
 	Reference  string `json:"reference"`
 	ReturnCode string `json:"returnCode"`
 	Status     string `json:"status"`
 	Kind       string `json:"kind"`
+}
+
+type transactionResponse struct {
+	TID           string              `json:"tid"`
+	Reference     string              `json:"reference"`
+	ReturnCode    string              `json:"returnCode"`
+	Status        string              `json:"status"`
+	Kind          string              `json:"kind"`
+	Authorization *authorizationBlock `json:"authorization"`
+}
+
+func (tx *transactionResponse) blocoPix() *authorizationBlock {
+	if tx == nil {
+		return nil
+	}
+	if tx.Authorization != nil {
+		return tx.Authorization
+	}
+	if strings.TrimSpace(tx.TID) != "" || strings.TrimSpace(tx.Status) != "" || strings.TrimSpace(tx.ReturnCode) != "" {
+		return &authorizationBlock{
+			TID:        tx.TID,
+			Reference:  tx.Reference,
+			ReturnCode: tx.ReturnCode,
+			Status:     tx.Status,
+			Kind:       tx.Kind,
+		}
+	}
+	return nil
+}
+
+// StatusPixLabel status legível para logs (ex.: Approved, Pending).
+func StatusPixLabel(tx *transactionResponse) string {
+	b := tx.blocoPix()
+	if b == nil {
+		return ""
+	}
+	return strings.TrimSpace(b.Status)
 }
 
 // ConsultarTransacaoPorTID GET /v2/transactions/{tid}
@@ -50,14 +87,15 @@ func ConsultarTransacaoPorTID(ctx context.Context, pv, clientSecret, ambiente, t
 	return &out, nil
 }
 
-// TransacaoAprovadaPix heurística: returnCode 00 ou status indicando pago.
+// TransacaoAprovadaPix PIX pago: doc e.Rede usa authorization.status=Approved e returnCode=00.
 func TransacaoAprovadaPix(tx *transactionResponse) bool {
-	if tx == nil {
+	b := tx.blocoPix()
+	if b == nil {
 		return false
 	}
-	if strings.TrimSpace(tx.ReturnCode) == "00" {
+	if strings.TrimSpace(b.ReturnCode) == "00" {
 		return true
 	}
-	s := strings.ToUpper(strings.TrimSpace(tx.Status))
+	s := strings.ToUpper(strings.TrimSpace(b.Status))
 	return s == "APPROVED" || s == "PAID" || s == "CONFIRMED"
 }
