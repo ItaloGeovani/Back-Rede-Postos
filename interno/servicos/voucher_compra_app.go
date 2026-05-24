@@ -9,6 +9,7 @@ import (
 	"math"
 	"slices"
 	"strings"
+	"sync"
 	"time"
 
 	"gaspass-servidor/interno/config"
@@ -28,7 +29,11 @@ const (
 	maxDiasVoucherResgate             = 365
 	minMinutosVoucherPix              = 5
 	maxMinutosVoucherPix              = 10080
+
+	intervaloMinConsultaPixProvedor = 20 * time.Second
 )
+
+var ultimaConsultaPixProvedor sync.Map // compraID -> time.Time
 
 // ErrVoucherCampanhaInvalida campanha inexistente ou não aplicável.
 var ErrVoucherCampanhaInvalida = errors.New("campanha invalida ou inaplicavel")
@@ -572,15 +577,53 @@ func (s *ServicoVoucherCompra) BuscarMeu(id, rede, usuario string) (*repositorio
 	return vc, nil
 }
 
+func deveConsultarPixProvedorAgora(compraID string) bool {
+	compraID = strings.TrimSpace(compraID)
+	if compraID == "" {
+		return true
+	}
+	now := time.Now()
+	if v, ok := ultimaConsultaPixProvedor.Load(compraID); ok {
+		if t, ok := v.(time.Time); ok && now.Sub(t) < intervaloMinConsultaPixProvedor {
+			return false
+		}
+	}
+	ultimaConsultaPixProvedor.Store(compraID, now)
+	return true
+}
+
+func logPixSyncPendenteThrottled(compraID, msg string) {
+	compraID = strings.TrimSpace(compraID)
+	if compraID == "" {
+		log.Print(msg)
+		return
+	}
+	key := compraID + ":pendente"
+	now := time.Now()
+	if v, ok := ultimaConsultaPixProvedor.Load(key); ok {
+		if t, ok := v.(time.Time); ok && now.Sub(t) < 60*time.Second {
+			return
+		}
+	}
+	ultimaConsultaPixProvedor.Store(key, now)
+	log.Print(msg)
+}
+
 // tentarSincronizarStatusPixPendente consulta e.Rede/MP e ativa o voucher se o pagamento já foi aprovado.
 func (s *ServicoVoucherCompra) tentarSincronizarStatusPixPendente(ctx context.Context, vc *repositorios.VoucherCompraRegistro, idRede string) {
 	if vc == nil || vc.Status != "AGUARDANDO_PAGAMENTO" {
 		return
 	}
 	if vc.ExpiraPagamento != nil && time.Now().After(*vc.ExpiraPagamento) {
+		log.Printf("voucher_pix sync: expirado compra=%s", vc.ID)
 		return
 	}
-	if vc.MpPaymentID == nil && gatewayTIDStr(vc) == "" {
+	tid := gatewayTIDStr(vc)
+	if vc.MpPaymentID == nil && tid == "" {
+		log.Printf("voucher_pix sync: sem tid/mp compra=%s", vc.ID)
+		return
+	}
+	if !deveConsultarPixProvedorAgora(vc.ID) {
 		return
 	}
 	idPosto := ""
@@ -589,19 +632,27 @@ func (s *ServicoVoucherCompra) tentarSincronizarStatusPixPendente(ctx context.Co
 	}
 	gw, err := ResolverGatewayPagamento(s.rede, s.mpGW, s.eredeGW, s.cfg, idRede, idPosto)
 	if err != nil {
-		log.Printf("voucher_pix sync: gateway compra=%s: %v", vc.ID, err)
+		log.Printf("voucher_pix sync: gateway compra=%s posto=%s: %v", vc.ID, idPosto, err)
 		return
 	}
 	provedor := strings.TrimSpace(vc.GatewayProvedor)
 	if provedor == "" {
 		provedor = gw.Provedor
 	}
-	pix, err := ConsultarPixVoucher(ctx, gw, provedor, gatewayTIDStr(vc), vc.MpPaymentID)
+	log.Printf(
+		"voucher_pix sync: consultando compra=%s provedor=%s tid=%s posto=%s",
+		vc.ID, provedor, tid, idPosto,
+	)
+	pix, err := ConsultarPixVoucher(ctx, gw, provedor, tid, vc.MpPaymentID)
 	if err != nil {
 		log.Printf("voucher_pix sync: consulta compra=%s provedor=%s: %v", vc.ID, provedor, err)
 		return
 	}
 	if strings.TrimSpace(pix.Status) != "approved" {
+		logPixSyncPendenteThrottled(vc.ID, fmt.Sprintf(
+			"voucher_pix sync: aguardando compra=%s provedor=%s tid=%s status_provedor=%q",
+			vc.ID, provedor, tid, strings.TrimSpace(pix.GatewayStatusLabel),
+		))
 		return
 	}
 	log.Printf(
