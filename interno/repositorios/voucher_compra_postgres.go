@@ -95,6 +95,7 @@ type scannerVcr interface {
 func scanVcr(s scannerVcr, x *VoucherCompraRegistro) error {
 	var camp, ref, cod sql.NullString
 	var mpID sql.NullInt64
+	var gwProv, gwTID sql.NullString
 	var litros, cashbackPct, cashbackVal sql.NullFloat64
 	var exPag, exRes, usado, cashbackCred sql.NullTime
 	var tipoBeneficio sql.NullString
@@ -104,6 +105,7 @@ func scanVcr(s scannerVcr, x *VoucherCompraRegistro) error {
 	err := s.Scan(
 		&x.ID, &x.RedeID, &x.UsuarioID, &camp, &x.ValorSolicitado, &x.DescontoAplicado, &x.ValorFinal,
 		&tipoBeneficio, &cashbackPct, &cashbackVal, &cashbackCred, &litros, &x.Status,
+		&gwProv, &gwTID,
 		&mpID, &ref, &cod, &exPag, &exRes, &x.CriadoEm, &x.AtualizadoEm,
 		&combID, &combNome,
 		&postoCompraID,
@@ -159,6 +161,7 @@ func scanVcr(s scannerVcr, x *VoucherCompraRegistro) error {
 	}
 	preencherCombustivelRede(x, combID, combNome)
 	preencherPostoCompra(x, postoCompraID)
+	preencherGatewayPagamento(x, gwProv, gwTID)
 	preencherUsoPostoOperador(x, usado, postoID, postoNome, opUID, opPapel, opNome)
 	return nil
 }
@@ -195,6 +198,18 @@ func preencherPostoCompra(x *VoucherCompraRegistro, postoCompraID sql.NullString
 	}
 }
 
+func preencherGatewayPagamento(x *VoucherCompraRegistro, gwProv, gwTID sql.NullString) {
+	x.GatewayProvedor = ""
+	if gwProv.Valid && strings.TrimSpace(gwProv.String) != "" {
+		x.GatewayProvedor = strings.TrimSpace(gwProv.String)
+	}
+	x.GatewayTID = nil
+	if gwTID.Valid && strings.TrimSpace(gwTID.String) != "" {
+		v := strings.TrimSpace(gwTID.String)
+		x.GatewayTID = &v
+	}
+}
+
 func preencherUsoPostoOperador(x *VoucherCompraRegistro, usado sql.NullTime, postoID, postoNome, opUID, opPapel, opNome sql.NullString) {
 	x.UsadoEm = nil
 	x.PostoUsoID = nil
@@ -228,6 +243,7 @@ func preencherUsoPostoOperador(x *VoucherCompraRegistro, usado sql.NullTime, pos
 func scanVcrComCampanha(s scannerVcr, x *VoucherCompraRegistro) error {
 	var camp, ref, cod sql.NullString
 	var mpID sql.NullInt64
+	var gwProv, gwTID sql.NullString
 	var litros, cashbackPct, cashbackVal sql.NullFloat64
 	var exPag, exRes, usado, cashbackCred sql.NullTime
 	var tipoBeneficio sql.NullString
@@ -238,6 +254,7 @@ func scanVcrComCampanha(s scannerVcr, x *VoucherCompraRegistro) error {
 	err := s.Scan(
 		&x.ID, &x.RedeID, &x.UsuarioID, &camp, &x.ValorSolicitado, &x.DescontoAplicado, &x.ValorFinal,
 		&tipoBeneficio, &cashbackPct, &cashbackVal, &cashbackCred, &litros, &x.Status,
+		&gwProv, &gwTID,
 		&mpID, &ref, &cod, &exPag, &exRes, &x.CriadoEm, &x.AtualizadoEm,
 		&cbCamp, &cbTit,
 		&combID, &combNome,
@@ -295,6 +312,7 @@ func scanVcrComCampanha(s scannerVcr, x *VoucherCompraRegistro) error {
 	preencherTipoCampanhaDoJoin(x, cbCamp, cbTit)
 	preencherCombustivelRede(x, combID, combNome)
 	preencherPostoCompra(x, postoCompraID)
+	preencherGatewayPagamento(x, gwProv, gwTID)
 	preencherUsoPostoOperador(x, usado, postoID, postoNome, opUID, opPapel, opNome)
 	return nil
 }
@@ -302,6 +320,7 @@ func scanVcrComCampanha(s scannerVcr, x *VoucherCompraRegistro) error {
 func scanVcrEquipe(s scannerVcr, x *VoucherCompraRegistro, clienteNome, clienteEmail *string) error {
 	var camp, ref, cod sql.NullString
 	var mpID sql.NullInt64
+	var gwProv, gwTID sql.NullString
 	var litros, cashbackPct, cashbackVal sql.NullFloat64
 	var exPag, exRes, usado, cashbackCred sql.NullTime
 	var tipoBeneficio sql.NullString
@@ -312,6 +331,7 @@ func scanVcrEquipe(s scannerVcr, x *VoucherCompraRegistro, clienteNome, clienteE
 	err := s.Scan(
 		&x.ID, &x.RedeID, &x.UsuarioID, &camp, &x.ValorSolicitado, &x.DescontoAplicado, &x.ValorFinal,
 		&tipoBeneficio, &cashbackPct, &cashbackVal, &cashbackCred, &litros, &x.Status,
+		&gwProv, &gwTID,
 		&mpID, &ref, &cod, &exPag, &exRes, &x.CriadoEm, &x.AtualizadoEm,
 		clienteNome, clienteEmail,
 		&cbCamp, &cbTit,
@@ -370,6 +390,7 @@ func scanVcrEquipe(s scannerVcr, x *VoucherCompraRegistro, clienteNome, clienteE
 	preencherTipoCampanhaDoJoin(x, cbCamp, cbTit)
 	preencherCombustivelRede(x, combID, combNome)
 	preencherPostoCompra(x, postoCompraID)
+	preencherGatewayPagamento(x, gwProv, gwTID)
 	preencherUsoPostoOperador(x, usado, postoID, postoNome, opUID, opPapel, opNome)
 	return nil
 }
@@ -383,6 +404,7 @@ SELECT
   v.valor_solicitado, v.desconto_aplicado, v.valor_final,
   v.tipo_beneficio, v.cashback_percentual::float8, v.cashback_valor::float8, v.cashback_creditado_em,
   v.litros::float8, v.status::text,
+  v.gateway_provedor, v.gateway_tid,
   v.mp_payment_id, v.referencia_pagamento, v.codigo_resgate, v.expira_pagamento_em, v.expira_resgate_em, v.criado_em, v.atualizado_em,
   c.base_desconto,
   COALESCE(NULLIF(TRIM(c.titulo), ''), NULLIF(TRIM(c.nome), '')),
@@ -420,6 +442,7 @@ SELECT
   v.valor_solicitado, v.desconto_aplicado, v.valor_final,
   v.tipo_beneficio, v.cashback_percentual::float8, v.cashback_valor::float8, v.cashback_creditado_em,
   v.litros::float8, v.status::text,
+  v.gateway_provedor, v.gateway_tid,
   v.mp_payment_id, v.referencia_pagamento, v.codigo_resgate, v.expira_pagamento_em, v.expira_resgate_em, v.criado_em, v.atualizado_em,
   c.base_desconto,
   COALESCE(NULLIF(TRIM(c.titulo), ''), NULLIF(TRIM(c.nome), '')),
@@ -506,6 +529,7 @@ SELECT
   v.valor_solicitado, v.desconto_aplicado, v.valor_final,
   v.tipo_beneficio, v.cashback_percentual::float8, v.cashback_valor::float8, v.cashback_creditado_em,
   v.litros::float8, v.status::text,
+  v.gateway_provedor, v.gateway_tid,
   v.mp_payment_id, v.referencia_pagamento, v.codigo_resgate, v.expira_pagamento_em, v.expira_resgate_em, v.criado_em, v.atualizado_em,
   v.combustivel_rede_id::text,
   COALESCE(NULLIF(TRIM(comb.nome), ''), ''),
@@ -538,6 +562,7 @@ SELECT
   v.valor_solicitado, v.desconto_aplicado, v.valor_final,
   v.tipo_beneficio, v.cashback_percentual::float8, v.cashback_valor::float8, v.cashback_creditado_em,
   v.litros::float8, v.status::text,
+  v.gateway_provedor, v.gateway_tid,
   v.mp_payment_id, v.referencia_pagamento, v.codigo_resgate, v.expira_pagamento_em, v.expira_resgate_em, v.criado_em, v.atualizado_em,
   v.combustivel_rede_id::text,
   COALESCE(NULLIF(TRIM(comb.nome), ''), ''),
@@ -574,6 +599,7 @@ SELECT
   v.valor_solicitado, v.desconto_aplicado, v.valor_final,
   v.tipo_beneficio, v.cashback_percentual::float8, v.cashback_valor::float8, v.cashback_creditado_em,
   v.litros::float8, v.status::text,
+  v.gateway_provedor, v.gateway_tid,
   v.mp_payment_id, v.referencia_pagamento, v.codigo_resgate, v.expira_pagamento_em, v.expira_resgate_em, v.criado_em, v.atualizado_em,
   COALESCE(TRIM(u.nome_completo), ''),
   COALESCE(TRIM(u.email), ''),
