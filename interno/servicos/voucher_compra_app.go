@@ -373,6 +373,15 @@ func (s *ServicoVoucherCompra) PagarComPixInicia(ctx context.Context, idRede, id
 		return nil, nil, errors.New("valor final apos desconto deve ser pelo menos R$ 1,00")
 	}
 
+	rede, err := s.rede.BuscarPorID(idRede)
+	if err != nil {
+		return nil, nil, err
+	}
+	if NormalizarGatewayPagamentoModo(rede.GatewayPagamentoModo) == modelos.GatewayPagamentoModoPosto &&
+		strings.TrimSpace(idPosto) == "" {
+		return nil, nil, errors.New("selecione o posto em que vai abastecer")
+	}
+
 	gw, err := ResolverGatewayPagamento(s.rede, s.mpGW, s.eredeGW, s.cfg, idRede, idPosto)
 	if err != nil {
 		return nil, nil, err
