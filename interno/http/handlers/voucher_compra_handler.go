@@ -218,3 +218,43 @@ func (h *Handlers) GetVoucherCompraDetalhe(w http.ResponseWriter, r *http.Reques
 	}
 	utils.ResponderJSON(w, http.StatusOK, map[string]any{"voucher": v})
 }
+
+// PostVoucherCompraVerificarPagamento POST /v1/eu/vouchers/verificar-pagamento?id= — consulta forçada ao provedor (botão "Já paguei").
+func (h *Handlers) PostVoucherCompraVerificarPagamento(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		utils.ResponderErro(w, http.StatusMethodNotAllowed, "metodo nao permitido")
+		return
+	}
+	u := middlewares.Usuario(r.Context())
+	if u == nil || u.Papel != modelos.PapelCliente {
+		utils.ResponderErro(w, http.StatusForbidden, "apenas clientes")
+		return
+	}
+	id := strings.TrimSpace(r.URL.Query().Get("id"))
+	if id == "" {
+		utils.ResponderErro(w, http.StatusBadRequest, "informe id")
+		return
+	}
+	if h.voucherCompraSvc == nil {
+		utils.ResponderErro(w, http.StatusServiceUnavailable, "servico indisponivel")
+		return
+	}
+	v, consulta, err := h.voucherCompraSvc.VerificarPagamentoPixCliente(r.Context(), id, u.IDRede, u.IDUsuario)
+	if err != nil {
+		if errors.Is(err, servicos.ErrConsultaPixAguarde) {
+			utils.ResponderErro(w, http.StatusTooManyRequests, err.Error())
+			return
+		}
+		if errors.Is(err, repositorios.ErrVoucherCompraNaoEncontrado) {
+			utils.ResponderErro(w, http.StatusNotFound, "nao encontrado")
+			return
+		}
+		if errors.Is(err, servicos.ErrDadosInvalidos) {
+			utils.ResponderErro(w, http.StatusBadRequest, err.Error())
+			return
+		}
+		utils.ResponderErro(w, http.StatusInternalServerError, "falha")
+		return
+	}
+	utils.ResponderJSON(w, http.StatusOK, map[string]any{"voucher": v, "consulta": consulta})
+}

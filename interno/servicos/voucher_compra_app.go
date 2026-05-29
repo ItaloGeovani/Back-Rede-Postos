@@ -31,9 +31,20 @@ const (
 	maxMinutosVoucherPix              = 10080
 
 	intervaloMinConsultaPixProvedor = 20 * time.Second
+	intervaloMinConsultaPixForcada  = 10 * time.Second
 )
 
-var ultimaConsultaPixProvedor sync.Map // compraID -> time.Time
+var ultimaConsultaPixProvedor sync.Map // compraID ou compraID:force -> time.Time
+
+// ErrConsultaPixAguarde throttle da verificação manual (botão no app).
+var ErrConsultaPixAguarde = errors.New("aguarde alguns segundos antes de consultar de novo")
+
+// VerificarPagamentoPixConsulta resultado da verificação manual no provedor.
+type VerificarPagamentoPixConsulta struct {
+	Executada bool   `json:"executada"`
+	Aprovado  bool   `json:"aprovado"`
+	Mensagem  string `json:"mensagem"`
+}
 
 // ErrVoucherCampanhaInvalida campanha inexistente ou não aplicável.
 var ErrVoucherCampanhaInvalida = errors.New("campanha invalida ou inaplicavel")
@@ -571,10 +582,94 @@ func (s *ServicoVoucherCompra) BuscarMeu(id, rede, usuario string) (*repositorio
 		return nil, err
 	}
 	if vc.Status == "AGUARDANDO_PAGAMENTO" {
-		s.tentarSincronizarStatusPixPendente(context.Background(), vc, rede)
+		s.tentarSincronizarStatusPixPendente(context.Background(), vc, rede, false)
 		return s.repo.BuscarPorID(id, usuario, rede)
 	}
 	return vc, nil
+}
+
+// VerificarPagamentoPixCliente consulta o provedor na hora (botão "Já paguei") e devolve status atualizado.
+func (s *ServicoVoucherCompra) VerificarPagamentoPixCliente(ctx context.Context, id, rede, usuario string) (
+	*repositorios.VoucherCompraRegistro, *VerificarPagamentoPixConsulta, error,
+) {
+	id = strings.TrimSpace(id)
+	rede = strings.TrimSpace(rede)
+	usuario = strings.TrimSpace(usuario)
+	if id == "" || rede == "" || usuario == "" {
+		return nil, nil, ErrDadosInvalidos
+	}
+	if !podeConsultarPixForcadaAgora(id) {
+		return nil, nil, ErrConsultaPixAguarde
+	}
+	marcarConsultaPixForcada(id)
+
+	vc, err := s.repo.BuscarPorID(id, usuario, rede)
+	if err != nil {
+		return nil, nil, err
+	}
+	consulta := &VerificarPagamentoPixConsulta{}
+
+	switch strings.TrimSpace(vc.Status) {
+	case "ATIVO":
+		consulta.Executada = false
+		consulta.Aprovado = true
+		consulta.Mensagem = "Seu voucher já está ativo."
+		return vc, consulta, nil
+	case "USADO":
+		consulta.Aprovado = true
+		consulta.Mensagem = "Este voucher já foi utilizado."
+		return vc, consulta, nil
+	case "CANCELADO":
+		consulta.Mensagem = "Este pagamento foi cancelado."
+		return vc, consulta, nil
+	case "EXPIRADO":
+		consulta.Mensagem = "O prazo deste pagamento PIX expirou."
+		return vc, consulta, nil
+	case "AGUARDANDO_PAGAMENTO":
+		if vc.ExpiraPagamento != nil && time.Now().After(*vc.ExpiraPagamento) {
+			consulta.Mensagem = "O prazo deste pagamento PIX expirou."
+			return vc, consulta, nil
+		}
+		s.tentarSincronizarStatusPixPendente(ctx, vc, rede, true)
+		consulta.Executada = true
+		vc2, err := s.repo.BuscarPorID(id, usuario, rede)
+		if err != nil {
+			return nil, consulta, err
+		}
+		if strings.TrimSpace(vc2.Status) == "ATIVO" {
+			consulta.Aprovado = true
+			consulta.Mensagem = "Pagamento confirmado! Seu voucher está pronto."
+		} else {
+			consulta.Mensagem = "Pagamento ainda não confirmado pelo banco. Tente novamente em alguns instantes."
+		}
+		return vc2, consulta, nil
+	default:
+		consulta.Mensagem = "Status do pagamento indisponível."
+		return vc, consulta, nil
+	}
+}
+
+func podeConsultarPixForcadaAgora(compraID string) bool {
+	compraID = strings.TrimSpace(compraID)
+	if compraID == "" {
+		return true
+	}
+	key := compraID + ":force"
+	now := time.Now()
+	if v, ok := ultimaConsultaPixProvedor.Load(key); ok {
+		if t, ok := v.(time.Time); ok && now.Sub(t) < intervaloMinConsultaPixForcada {
+			return false
+		}
+	}
+	return true
+}
+
+func marcarConsultaPixForcada(compraID string) {
+	compraID = strings.TrimSpace(compraID)
+	if compraID == "" {
+		return
+	}
+	ultimaConsultaPixProvedor.Store(compraID+":force", time.Now())
 }
 
 func deveConsultarPixProvedorAgora(compraID string) bool {
@@ -610,7 +705,8 @@ func logPixSyncPendenteThrottled(compraID, msg string) {
 }
 
 // tentarSincronizarStatusPixPendente consulta e.Rede/MP e ativa o voucher se o pagamento já foi aprovado.
-func (s *ServicoVoucherCompra) tentarSincronizarStatusPixPendente(ctx context.Context, vc *repositorios.VoucherCompraRegistro, idRede string) {
+// forcarConsulta ignora o throttle de 20s (verificação manual no app).
+func (s *ServicoVoucherCompra) tentarSincronizarStatusPixPendente(ctx context.Context, vc *repositorios.VoucherCompraRegistro, idRede string, forcarConsulta bool) {
 	if vc == nil || vc.Status != "AGUARDANDO_PAGAMENTO" {
 		return
 	}
@@ -623,8 +719,12 @@ func (s *ServicoVoucherCompra) tentarSincronizarStatusPixPendente(ctx context.Co
 		log.Printf("voucher_pix sync: sem tid/mp compra=%s", vc.ID)
 		return
 	}
-	if !deveConsultarPixProvedorAgora(vc.ID) {
-		return
+	if !forcarConsulta {
+		if !deveConsultarPixProvedorAgora(vc.ID) {
+			return
+		}
+	} else {
+		ultimaConsultaPixProvedor.Store(strings.TrimSpace(vc.ID), time.Now())
 	}
 	idPosto := ""
 	if vc.PostoCompraID != nil {
