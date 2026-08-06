@@ -93,6 +93,59 @@ func EnviarVoucherAprovado(ctx context.Context, cred string, tokens []string, id
 	}
 }
 
+// EnviarVoucherUsadoNoPosto push quando o frentista registra a baixa (dinheiro ou ATIVO → USADO).
+func EnviarVoucherUsadoNoPosto(ctx context.Context, cred string, tokens []string, idCompra, codigo, valorReais string, dinheiro bool) {
+	if cred == "" || len(tokens) == 0 {
+		return
+	}
+	c, err := fcmMensageria(ctx, cred)
+	if err != nil {
+		log.Printf("fcm: abrir credenciais: %v", err)
+		return
+	}
+	if c == nil {
+		return
+	}
+	titulo := "Voucher utilizado"
+	corpo := fmt.Sprintf("Uso de R$ %s registrado no posto. Pode abastecer.", valorReais)
+	if dinheiro {
+		titulo = "Pagamento confirmado"
+		corpo = fmt.Sprintf("Pagamento em dinheiro de R$ %s confirmado no posto.", valorReais)
+	}
+	for i := 0; i < len(tokens); i += 500 {
+		j := i + 500
+		if j > len(tokens) {
+			j = len(tokens)
+		}
+		batch := tokens[i:j]
+		req := &messaging.MulticastMessage{
+			Tokens: batch,
+			Notification: &messaging.Notification{
+				Title: titulo,
+				Body:  corpo,
+			},
+			Data: map[string]string{
+				"tipo":       "voucher_usado",
+				"id":         idCompra,
+				"codigo":     codigo,
+				"valor":      valorReais,
+				"abrir_tela": "vouchers",
+				"titulo":     titulo,
+				"corpo":      corpo,
+				"status":     "USADO",
+			},
+		}
+		br, err := c.SendEachForMulticast(ctx, req)
+		if err != nil {
+			log.Printf("fcm: SendEachForMulticast uso: %v", err)
+			return
+		}
+		if br.FailureCount > 0 {
+			log.Printf("fcm: lote uso: falhas=%d de %d", br.FailureCount, len(batch))
+		}
+	}
+}
+
 // EnviarNovaCampanhaNoApp push para clientes da rede quando o gestor cria campanha ativa no app.
 func EnviarNovaCampanhaNoApp(ctx context.Context, cred string, tokens []string, idCampanha, tituloExibicao, idRede string) {
 	if cred == "" {

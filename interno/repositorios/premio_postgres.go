@@ -164,3 +164,94 @@ WHERE id = $8::uuid AND rede_id = $9::uuid`
 	}
 	return nil
 }
+
+func (r *premioPostgres) BuscarPorIDNaRede(id, idRede string) (*modelos.Premio, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	const query = `
+SELECT
+  p.id::text,
+  p.rede_id::text,
+  p.titulo,
+  COALESCE(p.imagem_url, ''),
+  p.valor_moeda::float8,
+  p.ativo,
+  p.vigencia_inicio,
+  p.vigencia_fim,
+  p.quantidade_disponivel,
+  p.criado_em,
+  p.atualizado_em
+FROM premios p
+WHERE p.id = $1::uuid AND p.rede_id = $2::uuid`
+
+	var p modelos.Premio
+	var vigFim sql.NullTime
+	var qtd sql.NullInt64
+	err := r.db.QueryRowContext(ctx, query, strings.TrimSpace(id), strings.TrimSpace(idRede)).Scan(
+		&p.ID, &p.IDRede, &p.Titulo, &p.ImagemURL, &p.ValorMoeda, &p.Ativo,
+		&p.VigenciaInicio, &vigFim, &qtd,
+		&p.CriadoEm, &p.AtualizadoEm,
+	)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, ErrPremioNaoEncontrado
+	}
+	if err != nil {
+		return nil, err
+	}
+	if vigFim.Valid {
+		t := vigFim.Time
+		p.VigenciaFim = &t
+	}
+	if qtd.Valid {
+		v := int(qtd.Int64)
+		p.QuantidadeDisponivel = &v
+	}
+	return &p, nil
+}
+
+// DecrementarEstoqueTx decrementa quantidade_disponivel se controlada; NULL = ilimitado (noop).
+func (r *premioPostgres) DecrementarEstoqueTx(ctx context.Context, tx *sql.Tx, id, idRede string) error {
+	const check = `
+SELECT quantidade_disponivel
+FROM premios
+WHERE id = $1::uuid AND rede_id = $2::uuid
+FOR UPDATE`
+	var qtd sql.NullInt64
+	err := tx.QueryRowContext(ctx, check, strings.TrimSpace(id), strings.TrimSpace(idRede)).Scan(&qtd)
+	if errors.Is(err, sql.ErrNoRows) {
+		return ErrPremioNaoEncontrado
+	}
+	if err != nil {
+		return err
+	}
+	if !qtd.Valid {
+		return nil
+	}
+	if qtd.Int64 <= 0 {
+		return ErrPremioEsgotado
+	}
+	const upd = `
+UPDATE premios
+SET quantidade_disponivel = quantidade_disponivel - 1,
+    atualizado_em = NOW()
+WHERE id = $1::uuid AND rede_id = $2::uuid`
+	_, err = tx.ExecContext(ctx, upd, strings.TrimSpace(id), strings.TrimSpace(idRede))
+	return err
+}
+
+// IncrementarEstoqueTx repõe 1 unidade se o prêmio controla estoque.
+func (r *premioPostgres) IncrementarEstoqueTx(ctx context.Context, tx *sql.Tx, id, idRede string) error {
+	const q = `
+UPDATE premios
+SET quantidade_disponivel = quantidade_disponivel + 1,
+    atualizado_em = NOW()
+WHERE id = $1::uuid
+  AND rede_id = $2::uuid
+  AND quantidade_disponivel IS NOT NULL`
+	_, err := tx.ExecContext(ctx, q, strings.TrimSpace(id), strings.TrimSpace(idRede))
+	return err
+}
+
+var ErrPremioEsgotado = errors.New("premio sem estoque disponivel")
+

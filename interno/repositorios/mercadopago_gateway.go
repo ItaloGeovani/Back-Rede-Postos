@@ -1,6 +1,10 @@
 package repositorios
 
-import "errors"
+import (
+	"errors"
+
+	"gaspass-servidor/interno/modelos"
+)
 
 var ErrMercadoPagoGatewayNaoConfigurado = errors.New("mercado pago nao configurado para esta rede")
 var ErrMercadoPagoGatewayPostoNaoConfigurado = errors.New("mercado pago nao configurado para este posto")
@@ -13,11 +17,12 @@ type MercadoPagoGatewayCredenciais struct {
 
 // PostoMercadoPagoStatus resumo para o painel (modo POSTO).
 type PostoMercadoPagoStatus struct {
-	PostoID              string `json:"id_posto"`
-	Nome                 string `json:"nome"`
-	Codigo               string `json:"codigo"`
-	MpAccessTokenOK      bool   `json:"mp_access_token_configurado"`
-	MpWebhookSecretOK    bool   `json:"mp_webhook_secret_configurado"`
+	PostoID                 string                         `json:"id_posto"`
+	Nome                    string                         `json:"nome"`
+	Codigo                  string                         `json:"codigo"`
+	MpAccessTokenOK         bool                           `json:"mp_access_token_configurado"`
+	MpWebhookSecretOK       bool                           `json:"mp_webhook_secret_configurado"`
+	GatewayMeiosHabilitados modelos.GatewayMeiosHabilitados `json:"gateway_meios_habilitados"`
 }
 
 // MercadoPagoGatewayRepositorio persiste credenciais MP por rede e por posto.

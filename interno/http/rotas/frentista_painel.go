@@ -19,6 +19,9 @@ func RegistrarFrentistaPainel(muxPrincipal *http.ServeMux, h *handlers.Handlers,
 	mux.Handle("/v1/frentista/dev/vouchers/consultar", http.HandlerFunc(h.GetVoucherConsultaPorCodigoEquipe))
 	mux.Handle("/v1/frentista/dev/vouchers/baixar", http.HandlerFunc(h.PostVoucherBaixaEquipe))
 	mux.Handle("/v1/frentista/dev/vouchers/listar", http.HandlerFunc(h.GetVouchersComprasPainelEquipe))
+	mux.Handle("/v1/frentista/dev/premios/listar", http.HandlerFunc(h.ListarPremiosFrentista))
+	mux.Handle("/v1/frentista/dev/premios/resgates/listar", http.HandlerFunc(h.GetPremioResgatesPainel))
+	mux.Handle("/v1/frentista/dev/premios/resgates/entregar", http.HandlerFunc(h.PostPremioResgateEntregar))
 
 	chain := append([]middlewares.Middleware{}, mws...)
 	chain = append(chain, middlewares.ExigirAutenticacao(aut), middlewares.ExigirPapel(modelos.PapelFrentista))

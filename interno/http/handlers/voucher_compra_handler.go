@@ -77,12 +77,88 @@ func (h *Handlers) PostVoucherCompraPagar(w http.ResponseWriter, r *http.Request
 		IDCombustivelRede *string  `json:"id_combustivel_rede"`
 		Litros            *float64 `json:"litros"`
 		IDPosto           string   `json:"id_posto"`
+		MeioPagamento     string   `json:"meio_pagamento"`
+		ValorMoedaFiat    float64  `json:"valor_moeda_fiat"`
 		PayerEmail        string   `json:"payer_email"`
 		DocTipo           string   `json:"doc_tipo"`
 		DocNumero         string   `json:"doc_numero"`
 	}
 	if err := json.NewDecoder(io.LimitReader(r.Body, 1<<20)).Decode(&body); err != nil {
 		utils.ResponderErro(w, http.StatusBadRequest, "json invalido")
+		return
+	}
+	if body.ValorMoedaFiat > 0 {
+		if body.IDCampanha != nil && strings.TrimSpace(*body.IDCampanha) != "" {
+			utils.ResponderErro(w, http.StatusBadRequest, "compra com moeda virtual nao permite campanha")
+			return
+		}
+		meioRest := strings.ToUpper(strings.TrimSpace(body.MeioPagamento))
+		if meioRest == modelos.MeioPagamentoMoedaVirtual {
+			meioRest = ""
+		}
+		if meioRest == modelos.MeioPagamentoPix {
+			body.PayerEmail = strings.TrimSpace(body.PayerEmail)
+			body.DocTipo = strings.TrimSpace(body.DocTipo)
+			body.DocNumero = strings.TrimSpace(body.DocNumero)
+			if body.PayerEmail == "" || !strings.Contains(body.PayerEmail, "@") {
+				utils.ResponderErro(w, http.StatusBadRequest, "payer_email invalido")
+				return
+			}
+			if body.DocTipo == "" || body.DocNumero == "" {
+				utils.ResponderErro(w, http.StatusBadRequest, "doc_tipo e doc_numero obrigatorios")
+				return
+			}
+		}
+		reg, pay, err := h.voucherCompraSvc.PagarComMoedaInicia(
+			r.Context(), u.IDRede, u.IDUsuario, body.Valor, body.IDCombustivelRede, body.Litros,
+			strings.TrimSpace(body.IDPosto), body.ValorMoedaFiat, meioRest,
+			body.PayerEmail, body.DocTipo, body.DocNumero, time.Now(),
+		)
+		if err != nil {
+			if errors.Is(err, repositorios.ErrSaldoInsuficiente) {
+				utils.ResponderErro(w, http.StatusBadRequest, "saldo insuficiente na carteira")
+				return
+			}
+			if errors.Is(err, servicos.ErrDadosInvalidos) || errors.Is(err, servicos.ErrVoucherCampanhaInvalida) {
+				utils.ResponderErro(w, http.StatusBadRequest, err.Error())
+				return
+			}
+			utils.ResponderErro(w, http.StatusBadRequest, err.Error())
+			return
+		}
+		if reg.MeioPagamento == modelos.MeioPagamentoMoedaVirtual {
+			utils.ResponderJSON(w, http.StatusOK, servicos.RespostaMoedaVoucherJSON(reg))
+			return
+		}
+		if reg.MeioPagamento == modelos.MeioPagamentoDinheiro {
+			utils.ResponderJSON(w, http.StatusOK, servicos.RespostaDinheiroVoucherJSON(reg))
+			return
+		}
+		utils.ResponderJSON(w, http.StatusOK, servicos.RespostaPixVoucherJSON(reg, pay))
+		return
+	}
+	meio := strings.ToUpper(strings.TrimSpace(body.MeioPagamento))
+	if meio == "" || meio == modelos.MeioPagamentoPix {
+		meio = modelos.MeioPagamentoPix
+	}
+	if meio == modelos.MeioPagamentoDinheiro {
+		reg, err := h.voucherCompraSvc.PagarComDinheiroInicia(
+			u.IDRede, u.IDUsuario, body.Valor, body.IDCampanha, body.IDCombustivelRede, body.Litros,
+			strings.TrimSpace(body.IDPosto), time.Now(),
+		)
+		if err != nil {
+			if errors.Is(err, servicos.ErrDadosInvalidos) || errors.Is(err, servicos.ErrVoucherCampanhaInvalida) {
+				utils.ResponderErro(w, http.StatusBadRequest, err.Error())
+				return
+			}
+			utils.ResponderErro(w, http.StatusBadRequest, err.Error())
+			return
+		}
+		utils.ResponderJSON(w, http.StatusOK, servicos.RespostaDinheiroVoucherJSON(reg))
+		return
+	}
+	if meio != modelos.MeioPagamentoPix {
+		utils.ResponderErro(w, http.StatusBadRequest, "meio_pagamento invalido")
 		return
 	}
 	body.PayerEmail = strings.TrimSpace(body.PayerEmail)

@@ -25,6 +25,8 @@ func RegistrarProtegidas(muxPrincipal *http.ServeMux, h *handlers.Handlers, aut 
 	muxProtegida.Handle("/v1/eu/vouchers/verificar-pagamento", http.HandlerFunc(h.PostVoucherCompraVerificarPagamento))
 	muxProtegida.Handle("/v1/eu/vouchers/usos-campanha", http.HandlerFunc(h.GetVoucherCompraUsosCampanha))
 	muxProtegida.Handle("/v1/eu/vouchers", http.HandlerFunc(h.GetVoucherCompras))
+	muxProtegida.Handle("/v1/eu/premios/resgatar", http.HandlerFunc(h.PostEuPremioResgatar))
+	muxProtegida.Handle("/v1/eu/premios/resgates", http.HandlerFunc(h.GetEuPremioResgates))
 	muxProtegida.Handle("/v1/eu/push/fcm", http.HandlerFunc(h.PostRegistrarTokenFCM))
 	muxProtegida.Handle("/v1/eu/push/fcm/teste", http.HandlerFunc(h.PostFcmTeste))
 

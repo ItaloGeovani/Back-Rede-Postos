@@ -184,6 +184,8 @@ func (h *Handlers) EditarGatewayProvedorGestor(w http.ResponseWriter, r *http.Re
 			Pix           bool `json:"pix"`
 			CartaoCredito bool `json:"cartao_credito"`
 			CartaoDebito  bool `json:"cartao_debito"`
+			Dinheiro      bool `json:"dinheiro"`
+			MoedaVirtual  bool `json:"moeda_virtual"`
 		} `json:"gateway_meios_habilitados"`
 	}
 	if err := json.NewDecoder(io.LimitReader(r.Body, 1<<16)).Decode(&body); err != nil {
@@ -194,8 +196,10 @@ func (h *Handlers) EditarGatewayProvedorGestor(w http.ResponseWriter, r *http.Re
 		Pix:           body.GatewayMeiosHabilitados.Pix,
 		CartaoCredito: body.GatewayMeiosHabilitados.CartaoCredito,
 		CartaoDebito:  body.GatewayMeiosHabilitados.CartaoDebito,
+		Dinheiro:      body.GatewayMeiosHabilitados.Dinheiro,
+		MoedaVirtual:  body.GatewayMeiosHabilitados.MoedaVirtual,
 	}
-	if !meios.Pix && !meios.CartaoCredito && !meios.CartaoDebito {
+	if !meios.TemAlgumMeio() {
 		meios.Pix = true
 	}
 	rede, err := h.redeService.EditarGatewayProvedor(idRede, body.GatewayProvedorAtivo, meios)
@@ -241,15 +245,20 @@ func (h *Handlers) getERedeGatewayPainel(w http.ResponseWriter, r *http.Request)
 		}
 		out["id_posto"] = idPosto
 		out["webhook_url"] = h.urlWebhookERedePosto(idRede, idPosto)
+		if h.postoService != nil && idPosto != "" {
+			if posto, errP := h.postoService.BuscarPorIDNaRede(idPosto, idRede); errP == nil {
+				out["gateway_meios_posto"] = posto.GatewayMeiosHabilitados
+			}
+		}
 		creds, errC := h.eredeGatewayRepo.BuscarPorPostoID(idPosto, idRede)
 		out["pv_configurado"] = false
 		out["client_secret_configurado"] = false
+		out["ambiente"] = "sandbox"
 		if errC == nil {
 			out["pv_configurado"] = strings.TrimSpace(creds.PV) != ""
 			out["client_secret_configurado"] = strings.TrimSpace(creds.ClientSecret) != ""
-			if strings.TrimSpace(creds.PV) != "" {
-				out["pv_mascarado"] = mascararSegredoMercadoPago(creds.PV)
-			}
+			out["pv"] = creds.PV
+			out["client_secret"] = creds.ClientSecret
 			out["ambiente"] = creds.Ambiente
 		}
 		utils.ResponderJSON(w, http.StatusOK, out)
@@ -270,12 +279,16 @@ func (h *Handlers) getERedeGatewayPainel(w http.ResponseWriter, r *http.Request)
 				wh = base + "/v1/public/erede/webhook/" + idRede + "/" + p.PostoID
 			}
 			itens = append(itens, map[string]any{
-				"id_posto":                p.PostoID,
-				"nome":                    p.Nome,
-				"codigo":                  p.Codigo,
-				"webhook_url":             wh,
-				"pv_configurado":          p.PvConfigurado,
+				"id_posto":                  p.PostoID,
+				"nome":                      p.Nome,
+				"codigo":                    p.Codigo,
+				"webhook_url":               wh,
+				"pv_configurado":            p.PvConfigurado,
 				"client_secret_configurado": p.SecretConfigurado,
+				"pv":                        p.PV,
+				"client_secret":             p.ClientSecret,
+				"ambiente":                  p.Ambiente,
+				"gateway_meios_habilitados": p.GatewayMeiosHabilitados,
 			})
 		}
 		out["postos"] = itens
@@ -287,12 +300,12 @@ func (h *Handlers) getERedeGatewayPainel(w http.ResponseWriter, r *http.Request)
 	if err != nil {
 		out["pv_configurado"] = false
 		out["client_secret_configurado"] = false
+		out["ambiente"] = "sandbox"
 	} else {
 		out["pv_configurado"] = strings.TrimSpace(creds.PV) != ""
 		out["client_secret_configurado"] = strings.TrimSpace(creds.ClientSecret) != ""
-		if strings.TrimSpace(creds.PV) != "" {
-			out["pv_mascarado"] = mascararSegredoMercadoPago(creds.PV)
-		}
+		out["pv"] = creds.PV
+		out["client_secret"] = creds.ClientSecret
 		out["ambiente"] = creds.Ambiente
 	}
 	utils.ResponderJSON(w, http.StatusOK, out)

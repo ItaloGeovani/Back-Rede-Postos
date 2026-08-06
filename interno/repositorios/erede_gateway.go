@@ -1,6 +1,10 @@
 package repositorios
 
-import "errors"
+import (
+	"errors"
+
+	"gaspass-servidor/interno/modelos"
+)
 
 var (
 	ErrERedeGatewayNaoConfigurado      = errors.New("e.rede nao configurado para esta rede")
@@ -14,13 +18,17 @@ type ERedeGatewayCredenciais struct {
 	Ambiente     string // sandbox | producao
 }
 
-// PostoERedeStatus resumo para o painel (modo POSTO).
+// PostoERedeStatus resumo + credenciais para o painel (modo POSTO).
 type PostoERedeStatus struct {
-	PostoID           string `json:"id_posto"`
-	Nome              string `json:"nome"`
-	Codigo            string `json:"codigo"`
-	PvConfigurado     bool   `json:"pv_configurado"`
-	SecretConfigurado bool   `json:"client_secret_configurado"`
+	PostoID                 string                         `json:"id_posto"`
+	Nome                    string                         `json:"nome"`
+	Codigo                  string                         `json:"codigo"`
+	PvConfigurado           bool                           `json:"pv_configurado"`
+	SecretConfigurado       bool                           `json:"client_secret_configurado"`
+	PV                      string                         `json:"pv,omitempty"`
+	ClientSecret            string                         `json:"client_secret,omitempty"`
+	Ambiente                string                         `json:"ambiente,omitempty"`
+	GatewayMeiosHabilitados modelos.GatewayMeiosHabilitados `json:"gateway_meios_habilitados"`
 }
 
 // ERedeGatewayRepositorio credenciais e.Rede por rede e por posto.

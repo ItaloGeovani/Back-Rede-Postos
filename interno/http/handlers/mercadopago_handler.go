@@ -251,6 +251,11 @@ func (h *Handlers) getMercadoPagoGatewayPainel(w http.ResponseWriter, r *http.Re
 		}
 		out["id_posto"] = idPosto
 		out["webhook_url"] = h.urlWebhookMercadoPagoPosto(idRede, idPosto)
+		if h.postoService != nil && idPosto != "" {
+			if posto, errP := h.postoService.BuscarPorIDNaRede(idPosto, idRede); errP == nil {
+				out["gateway_meios_posto"] = posto.GatewayMeiosHabilitados
+			}
+		}
 		creds, errC := h.mpGatewayRepo.BuscarPorPostoID(idPosto, idRede)
 		h.preencherCredenciaisMPNoJSON(out, creds, errC)
 		utils.ResponderJSON(w, http.StatusOK, out)
@@ -278,6 +283,7 @@ func (h *Handlers) getMercadoPagoGatewayPainel(w http.ResponseWriter, r *http.Re
 				"webhook_url":                   wh,
 				"mp_access_token_configurado":   p.MpAccessTokenOK,
 				"mp_webhook_secret_configurado": p.MpWebhookSecretOK,
+				"gateway_meios_habilitados":     p.GatewayMeiosHabilitados,
 			})
 		}
 		out["postos"] = itens

@@ -53,9 +53,9 @@ func Carregar() Config {
 	}
 }
 
-// duracaoSessaoAPI: env SESSAO_DURACAO_DIAS (1–365), default 30.
+// duracaoSessaoAPI: env SESSAO_DURACAO_DIAS (1–365), default 180 (6 meses).
 func duracaoSessaoAPI() time.Duration {
-	d := utils.ObterEnvInt("SESSAO_DURACAO_DIAS", 30)
+	d := utils.ObterEnvInt("SESSAO_DURACAO_DIAS", 180)
 	if d < 1 {
 		d = 1
 	}

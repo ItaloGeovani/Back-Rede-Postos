@@ -55,6 +55,7 @@ var (
 	ErrVoucherEquipePapelBaixa      = errors.New("papel nao autorizado a registrar uso do voucher")
 	ErrVoucherEquipeNaoAtivoUso     = errors.New("voucher nao esta ativo para uso")
 	ErrVoucherEquipeResgateExpirado = errors.New("prazo de resgate do voucher expirou")
+	ErrVoucherEquipePostoIncorreto  = errors.New("este voucher so pode ser usado no posto onde foi comprado")
 )
 
 // ServicoVoucherCompra compra de voucher no app (PIX + campanha).
@@ -65,6 +66,9 @@ type ServicoVoucherCompra struct {
 	mpGW       repositorios.MercadoPagoGatewayRepositorio
 	eredeGW    repositorios.ERedeGatewayRepositorio
 	rede       repositorios.RedeRepositorio
+	posto      interface {
+		BuscarPorIDNaRede(idPosto, idRede string) (*modelos.Posto, error)
+	}
 	carteira   repositorios.CarteiraRepositorio
 	fcm        repositorios.FCMListador
 	cfg        config.Config
@@ -77,13 +81,19 @@ func NovoServicoVoucherCompra(
 	mp repositorios.MercadoPagoGatewayRepositorio,
 	erede repositorios.ERedeGatewayRepositorio,
 	rede repositorios.RedeRepositorio,
+	posto interface {
+		BuscarPorIDNaRede(idPosto, idRede string) (*modelos.Posto, error)
+	},
 	carteira repositorios.CarteiraRepositorio,
 	comb repositorios.CombustivelRedeRepositorio,
 	fcm repositorios.FCMListador,
 	cfg config.Config,
 	ind *ServicoIndiqueGanhe,
 ) *ServicoVoucherCompra {
-	return &ServicoVoucherCompra{repo: repo, campanha: camp, mpGW: mp, eredeGW: erede, rede: rede, carteira: carteira, combustive: comb, fcm: fcm, cfg: cfg, indique: ind}
+	return &ServicoVoucherCompra{
+		repo: repo, campanha: camp, mpGW: mp, eredeGW: erede, rede: rede, posto: posto,
+		carteira: carteira, combustive: comb, fcm: fcm, cfg: cfg, indique: ind,
+	}
 }
 
 func (s *ServicoVoucherCompra) duracaoPagamentoPix(idRede string) time.Duration {
@@ -398,7 +408,7 @@ func (s *ServicoVoucherCompra) PagarComPixInicia(ctx context.Context, idRede, id
 		return nil, nil, errors.New("selecione o posto em que vai abastecer")
 	}
 
-	gw, err := ResolverGatewayPagamento(s.rede, s.mpGW, s.eredeGW, s.cfg, idRede, idPosto)
+	gw, err := ResolverGatewayPagamento(s.rede, s.mpGW, s.eredeGW, s.posto, s.cfg, idRede, idPosto)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -434,6 +444,7 @@ func (s *ServicoVoucherCompra) PagarComPixInicia(ctx context.Context, idRede, id
 		CashbackPercentual:  calc.CashbackPercentual,
 		CashbackValor:       calc.CashbackPrevisto,
 		Status:              "AGUARDANDO_PAGAMENTO",
+		MeioPagamento:       modelos.MeioPagamentoPix,
 		GatewayProvedor:     gw.Provedor,
 		ReferenciaPagamento: &ref,
 		ExpiraPagamento:     &expP,
@@ -463,6 +474,204 @@ func (s *ServicoVoucherCompra) PagarComPixInicia(ctx context.Context, idRede, id
 	}
 	logPixVoucherCriado(idRede, reg, gw, res)
 	return reg, res, nil
+}
+
+// PagarComDinheiroInicia cria voucher com código imediato (pagamento ao frentista no posto).
+func (s *ServicoVoucherCompra) PagarComDinheiroInicia(idRede, idUsuario string, valor float64, idCampanha *string,
+	idCombustivelRede *string, litros *float64, idPosto string, agora time.Time,
+) (*repositorios.VoucherCompraRegistro, error) {
+	if strings.TrimSpace(idRede) == "" || strings.TrimSpace(idUsuario) == "" {
+		return nil, ErrDadosInvalidos
+	}
+	calc, err := s.Calcular(idRede, valor, idCampanha, agora, idCombustivelRede, litros)
+	if err != nil {
+		return nil, err
+	}
+	if idCampanha != nil && strings.TrimSpace(*idCampanha) != "" {
+		c, err := s.buscarCampanhaElegivel(idRede, strings.TrimSpace(*idCampanha), agora)
+		if err != nil {
+			return nil, err
+		}
+		if c.MaxUsosPorCliente != nil {
+			n, err := s.repo.ContarUsosCampanhaUsuario(c.ID, idUsuario, idRede)
+			if err != nil {
+				return nil, err
+			}
+			if n >= *c.MaxUsosPorCliente {
+				return nil, errors.New("limite de usos desta campanha para voce foi atingido")
+			}
+		}
+		pid := strings.TrimSpace(c.IDPosto)
+		if pid != "" {
+			preq := strings.TrimSpace(idPosto)
+			if preq == "" {
+				return nil, errors.New("esta campanha e exclusiva de um posto; selecione o posto na compra")
+			}
+			if pid != preq {
+				return nil, errors.New("campanha nao valida para o posto selecionado")
+			}
+		}
+	}
+	if calc.ValorFinal < 1.0 {
+		return nil, errors.New("valor final apos desconto deve ser pelo menos R$ 1,00")
+	}
+
+	rede, err := s.rede.BuscarPorID(idRede)
+	if err != nil {
+		return nil, err
+	}
+	meios := rede.GatewayMeiosHabilitados
+	preq := strings.TrimSpace(idPosto)
+	if preq != "" && s.posto != nil {
+		posto, errP := s.posto.BuscarPorIDNaRede(preq, idRede)
+		if errP != nil {
+			return nil, errP
+		}
+		meios = modelos.IntersecaoMeios(rede.GatewayMeiosHabilitados, posto.GatewayMeiosHabilitados)
+	}
+	if !meios.Dinheiro {
+		if preq != "" {
+			return nil, errors.New("este posto nao aceita pagamento em dinheiro no momento")
+		}
+		return nil, errors.New("rede nao aceita pagamento em dinheiro no momento")
+	}
+	modo := NormalizarGatewayPagamentoModo(rede.GatewayPagamentoModo)
+	var postoCompra *string
+	if modo == modelos.GatewayPagamentoModoPosto {
+		p := strings.TrimSpace(idPosto)
+		if p == "" {
+			return nil, errors.New("selecione o posto em que vai abastecer")
+		}
+		postoCompra = &p
+	} else if strings.TrimSpace(idPosto) != "" {
+		p := strings.TrimSpace(idPosto)
+		postoCompra = &p
+	}
+
+	idCompra := uuid.New().String()
+	cod := gerarCodigoResgate()
+	expR := s.expiraResgateAposPagamentoAprovado(idRede, agora)
+	reg := &repositorios.VoucherCompraRegistro{
+		ID:                 idCompra,
+		RedeID:             idRede,
+		UsuarioID:          idUsuario,
+		ValorSolicitado:    calc.ValorSolicitado,
+		DescontoAplicado:   calc.DescontoAplicado,
+		ValorFinal:         calc.ValorFinal,
+		TipoBeneficio:      calc.TipoBeneficio,
+		CashbackPercentual: calc.CashbackPercentual,
+		CashbackValor:      calc.CashbackPrevisto,
+		Status:             "AGUARDANDO_DINHEIRO",
+		MeioPagamento:      modelos.MeioPagamentoDinheiro,
+		CodigoResgate:      &cod,
+		ExpiraResgate:      &expR,
+		PostoCompraID:      postoCompra,
+	}
+	if idCampanha != nil && strings.TrimSpace(*idCampanha) != "" {
+		s := strings.TrimSpace(*idCampanha)
+		reg.CampanhaID = &s
+	}
+	if calc.Litros != nil {
+		v := *calc.Litros
+		reg.Litros = &v
+	}
+	if idCombustivelRede != nil && strings.TrimSpace(*idCombustivelRede) != "" {
+		s := strings.TrimSpace(*idCombustivelRede)
+		reg.CombustivelRedeID = &s
+	}
+	var lastErr error
+	for range 8 {
+		lastErr = s.repo.CriarAguardandoDinheiro(reg)
+		if lastErr == nil {
+			log.Printf("voucher_dinheiro criado: rede=%s compra=%s codigo=%s", idRede, reg.ID, cod)
+			return reg, nil
+		}
+		if !strings.Contains(strings.ToLower(lastErr.Error()), "unique") &&
+			!strings.Contains(strings.ToLower(lastErr.Error()), "duplicate") {
+			return nil, lastErr
+		}
+		cod = gerarCodigoResgate()
+		reg.CodigoResgate = &cod
+	}
+	return nil, fmt.Errorf("falha ao gerar codigo unico: %w", lastErr)
+}
+
+func (s *ServicoVoucherCompra) enriquecerConsultaEquipe(out *repositorios.VoucherCompraConsultaEquipe, operadorPostoID string) {
+	if out == nil {
+		return
+	}
+	if strings.TrimSpace(out.MeioPagamento) == "" {
+		out.MeioPagamento = modelos.MeioPagamentoPix
+	}
+	aguarda := out.Status == "AGUARDANDO_DINHEIRO"
+	if aguarda {
+		out.MeioPagamento = modelos.MeioPagamentoDinheiro
+	}
+	out.AguardaPagamentoDinheiro = aguarda
+	if aguarda {
+		restante := ValorRestanteACobrar(&out.VoucherCompraRegistro)
+		if UsouMoedaVirtual(&out.VoucherCompraRegistro) && restante > 0 {
+			out.AvisoTitulo = "Cobrar restante em dinheiro"
+			out.AvisoCorpo = fmt.Sprintf(
+				"Cliente ja usou moeda virtual. Receba apenas R$ %.2f em dinheiro e confirme abaixo.",
+				restante,
+			)
+		} else {
+			out.AvisoTitulo = "Cobrar pagamento em dinheiro"
+			out.AvisoCorpo = "Este voucher ainda nao foi pago. Receba o valor em dinheiro do cliente e confirme abaixo para liberar o abastecimento."
+		}
+	}
+
+	compraPosto := ""
+	if out.PostoCompraID != nil {
+		compraPosto = strings.TrimSpace(*out.PostoCompraID)
+	}
+	if compraPosto == "" {
+		return
+	}
+	out.UsoRestritoAoPostoCompra = true
+	if s.posto != nil {
+		if p, err := s.posto.BuscarPorIDNaRede(compraPosto, out.RedeID); err == nil && p != nil {
+			nome := strings.TrimSpace(p.NomeFantasia)
+			if nome == "" {
+				nome = strings.TrimSpace(p.Nome)
+			}
+			out.PostoCompraNome = nome
+		}
+	}
+	op := strings.TrimSpace(operadorPostoID)
+	if op == "" {
+		return
+	}
+	ok := strings.EqualFold(op, compraPosto)
+	out.OperadorPodeRegistrarUso = &ok
+	if ok {
+		return
+	}
+	if out.PostoCompraNome != "" {
+		out.OperadorAvisoPosto = fmt.Sprintf(
+			"Este voucher so pode ser usado em %s. Voce esta em outro posto.",
+			out.PostoCompraNome,
+		)
+	} else {
+		out.OperadorAvisoPosto = ErrVoucherEquipePostoIncorreto.Error()
+	}
+}
+
+// ConsultarPorCodigoResgateEquipe voucher por código de resgate na rede (frentista / gerente / gestor).
+// operadorPostoID: posto do token (frentista/gerente); vazio para gestor sem posto.
+func (s *ServicoVoucherCompra) ConsultarPorCodigoResgateEquipe(idRede, codigo, operadorPostoID string) (*repositorios.VoucherCompraConsultaEquipe, error) {
+	idRede = strings.TrimSpace(idRede)
+	codigo = strings.TrimSpace(codigo)
+	if idRede == "" || codigo == "" {
+		return nil, ErrDadosInvalidos
+	}
+	out, err := s.repo.BuscarPorCodigoResgateConsultaEquipe(codigo, idRede)
+	if err != nil {
+		return nil, err
+	}
+	s.enriquecerConsultaEquipe(out, operadorPostoID)
+	return out, nil
 }
 
 func logPixVoucherCriado(idRede string, reg *repositorios.VoucherCompraRegistro, gw *GatewayContext, pix *PixCobrancaResult) {
@@ -521,7 +730,7 @@ func (s *ServicoVoucherCompra) RetomarDadosPixPendente(ctx context.Context, idCo
 	if vc.PostoCompraID != nil {
 		idPosto = strings.TrimSpace(*vc.PostoCompraID)
 	}
-	gw, err := ResolverGatewayPagamento(s.rede, s.mpGW, s.eredeGW, s.cfg, idRede, idPosto)
+	gw, err := ResolverGatewayPagamento(s.rede, s.mpGW, s.eredeGW, s.posto, s.cfg, idRede, idPosto)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -730,7 +939,7 @@ func (s *ServicoVoucherCompra) tentarSincronizarStatusPixPendente(ctx context.Co
 	if vc.PostoCompraID != nil {
 		idPosto = strings.TrimSpace(*vc.PostoCompraID)
 	}
-	gw, err := ResolverGatewayPagamento(s.rede, s.mpGW, s.eredeGW, s.cfg, idRede, idPosto)
+	gw, err := ResolverGatewayPagamento(s.rede, s.mpGW, s.eredeGW, s.posto, s.cfg, idRede, idPosto)
 	if err != nil {
 		log.Printf("voucher_pix sync: gateway compra=%s posto=%s: %v", vc.ID, idPosto, err)
 		return
@@ -766,17 +975,7 @@ func (s *ServicoVoucherCompra) tentarSincronizarStatusPixPendente(ctx context.Co
 	s.processarAtivacaoVoucher(idRede, vc.ID)
 }
 
-// ConsultarPorCodigoResgateEquipe voucher por código de resgate na rede (frentista / gerente / gestor).
-func (s *ServicoVoucherCompra) ConsultarPorCodigoResgateEquipe(idRede, codigo string) (*repositorios.VoucherCompraConsultaEquipe, error) {
-	idRede = strings.TrimSpace(idRede)
-	codigo = strings.TrimSpace(codigo)
-	if idRede == "" || codigo == "" {
-		return nil, ErrDadosInvalidos
-	}
-	return s.repo.BuscarPorCodigoResgateConsultaEquipe(codigo, idRede)
-}
-
-// RegistrarBaixaPorCodigoEquipe marca o voucher ATIVO como USADO e grava posto + operador (frentista/gerente/gestor).
+// RegistrarBaixaPorCodigoEquipe marca o voucher ATIVO ou AGUARDANDO_DINHEIRO como USADO.
 func (s *ServicoVoucherCompra) RegistrarBaixaPorCodigoEquipe(u *modelos.UsuarioSessao, codigo string, idPostoOpcional *string) (*repositorios.VoucherCompraConsultaEquipe, error) {
 	if u == nil {
 		return nil, ErrDadosInvalidos
@@ -807,7 +1006,11 @@ func (s *ServicoVoucherCompra) RegistrarBaixaPorCodigoEquipe(u *modelos.UsuarioS
 	if err != nil {
 		return nil, err
 	}
-	if strings.TrimSpace(vc.Status) != "ATIVO" {
+	status := strings.TrimSpace(vc.Status)
+	// AGUARDANDO_DINHEIRO já implica pagamento em dinheiro no posto (código gerado na criação).
+	ehDinheiro := status == "AGUARDANDO_DINHEIRO"
+	ehAtivo := status == "ATIVO"
+	if !ehDinheiro && !ehAtivo {
 		return nil, ErrVoucherEquipeNaoAtivoUso
 	}
 	if vc.ExpiraResgate != nil && time.Now().After(*vc.ExpiraResgate) {
@@ -815,14 +1018,44 @@ func (s *ServicoVoucherCompra) RegistrarBaixaPorCodigoEquipe(u *modelos.UsuarioS
 	}
 	if vc.PostoCompraID != nil && strings.TrimSpace(*vc.PostoCompraID) != "" {
 		compraPosto := strings.TrimSpace(*vc.PostoCompraID)
-		if postoPtr == nil || strings.TrimSpace(*postoPtr) != compraPosto {
-			return nil, errors.New("este voucher so pode ser usado no posto onde foi comprado")
+		operPosto := ""
+		if postoPtr != nil {
+			operPosto = strings.TrimSpace(*postoPtr)
+		}
+		if !strings.EqualFold(operPosto, compraPosto) {
+			log.Printf(
+				"voucher baixa: posto incorreto codigo=%s compra_posto=%s operador_posto=%s papel=%s",
+				codigo, compraPosto, operPosto, u.Papel,
+			)
+			return nil, ErrVoucherEquipePostoIncorreto
 		}
 	}
 	if err := s.repo.RegistrarBaixaUso(vc.ID, u.IDRede, postoPtr, u.IDUsuario, string(u.Papel), strings.TrimSpace(u.NomeCompleto)); err != nil {
+		log.Printf("voucher baixa: RegistrarBaixaUso id=%s: %v", vc.ID, err)
 		return nil, err
 	}
-	return s.repo.BuscarPorCodigoResgateConsultaEquipe(codigo, u.IDRede)
+	uid := strings.TrimSpace(vc.UsuarioID)
+	cod := ""
+	if vc.CodigoResgate != nil {
+		cod = strings.TrimSpace(*vc.CodigoResgate)
+	}
+	if ehDinheiro {
+		if s.indique != nil && uid != "" && !UsouMoedaVirtual(&vc.VoucherCompraRegistro) {
+			s.indique.AposVoucherAprovado(u.IDRede, uid, vc.ID)
+		}
+		s.creditarCashbackVoucher(u.IDRede, &vc.VoucherCompraRegistro)
+	}
+	go s.notificarPushVoucherUsadoNoPosto(uid, vc.ID, cod, vc.ValorFinal, ehDinheiro)
+	out, err := s.repo.BuscarPorCodigoResgateConsultaEquipe(codigo, u.IDRede)
+	if err != nil {
+		return nil, err
+	}
+	opPosto := ""
+	if postoPtr != nil {
+		opPosto = strings.TrimSpace(*postoPtr)
+	}
+	s.enriquecerConsultaEquipe(out, opPosto)
+	return out, nil
 }
 
 // ListarPainelPorRede compras da rede para o painel (gestor, equipe, super-admin); status vazio = todos.
@@ -843,7 +1076,7 @@ func (s *ServicoVoucherCompra) ListarPainelPorRede(idRede string, limite, offset
 	status = strings.TrimSpace(status)
 	if status != "" {
 		switch status {
-		case "AGUARDANDO_PAGAMENTO", "ATIVO", "USADO", "EXPIRADO", "CANCELADO":
+		case "AGUARDANDO_PAGAMENTO", "AGUARDANDO_DINHEIRO", "ATIVO", "USADO", "EXPIRADO", "CANCELADO":
 		default:
 			return nil, 0, ErrDadosInvalidos
 		}
@@ -906,7 +1139,7 @@ func (s *ServicoVoucherCompra) processarAtivacaoVoucher(idRede, idCompra string)
 		if lastErr == nil {
 			log.Printf("voucher webhook: ativado id=%s codigo=%s", idCompra, cod)
 			uid := strings.TrimSpace(vc.UsuarioID)
-			if s.indique != nil && uid != "" {
+			if s.indique != nil && uid != "" && !UsouMoedaVirtual(vc) {
 				s.indique.AposVoucherAprovado(idRede, uid, idCompra)
 			}
 			s.creditarCashbackVoucher(idRede, vc)
@@ -990,6 +1223,31 @@ func (s *ServicoVoucherCompra) notificarPushVoucherAprovado(idUsuario, idCompra,
 	xctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
 	defer cancel()
 	notificacoes.EnviarVoucherAprovado(xctx, cred, tokens, idCompra, codigo, v)
+}
+
+func (s *ServicoVoucherCompra) notificarPushVoucherUsadoNoPosto(idUsuario, idCompra, codigo string, valor float64, dinheiro bool) {
+	if s.fcm == nil {
+		return
+	}
+	cred := strings.TrimSpace(s.cfg.FcmCaminhoContaServico)
+	if cred == "" {
+		return
+	}
+	if strings.TrimSpace(idUsuario) == "" {
+		return
+	}
+	tokens, err := s.fcm.ListarTokensFCMPorUsuarioID(idUsuario)
+	if err != nil {
+		log.Printf("fcm: listar tokens usuario=%s: %v", idUsuario, err)
+		return
+	}
+	if len(tokens) == 0 {
+		return
+	}
+	v := formatarBRL2(valor)
+	xctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+	defer cancel()
+	notificacoes.EnviarVoucherUsadoNoPosto(xctx, cred, tokens, idCompra, codigo, v, dinheiro)
 }
 
 func formatarBRL2(v float64) string {

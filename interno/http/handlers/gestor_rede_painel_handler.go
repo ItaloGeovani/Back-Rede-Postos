@@ -403,6 +403,74 @@ func (h *Handlers) EditarPostoGestorRede(w http.ResponseWriter, r *http.Request)
 	})
 }
 
+// EditarMeiosPostoGestorRede PUT — meios aceitos neste posto (gestor: qualquer; gerente: só o seu).
+func (h *Handlers) EditarMeiosPostoGestorRede(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPut {
+		utils.ResponderErro(w, http.StatusMethodNotAllowed, "metodo nao permitido")
+		return
+	}
+	idRede, ok := h.idRedeDaSessao(w, r)
+	if !ok {
+		return
+	}
+	u := middlewares.Usuario(r.Context())
+	if u == nil {
+		utils.ResponderErro(w, http.StatusUnauthorized, "sessao invalida")
+		return
+	}
+	var body struct {
+		IDPosto string `json:"id_posto"`
+		Meios   struct {
+			Pix           bool `json:"pix"`
+			CartaoCredito bool `json:"cartao_credito"`
+			CartaoDebito  bool `json:"cartao_debito"`
+			Dinheiro      bool `json:"dinheiro"`
+			MoedaVirtual  bool `json:"moeda_virtual"`
+		} `json:"gateway_meios_habilitados"`
+	}
+	if err := utils.DecodificarJSON(r, &body); err != nil {
+		utils.ResponderErro(w, http.StatusBadRequest, "payload invalido")
+		return
+	}
+	idPosto := strings.TrimSpace(body.IDPosto)
+	if u.Papel == modelos.PapelGerentePosto {
+		idPosto = strings.TrimSpace(u.IDPosto)
+		if idPosto == "" {
+			utils.ResponderErro(w, http.StatusBadRequest, "gerente sem posto vinculado")
+			return
+		}
+	}
+	if idPosto == "" {
+		utils.ResponderErro(w, http.StatusBadRequest, "informe id_posto")
+		return
+	}
+	meios := modelos.GatewayMeiosHabilitados{
+		Pix:           body.Meios.Pix,
+		CartaoCredito: body.Meios.CartaoCredito,
+		CartaoDebito:  body.Meios.CartaoDebito,
+		Dinheiro:      body.Meios.Dinheiro,
+		MoedaVirtual:  body.Meios.MoedaVirtual,
+	}
+	p, err := h.postoService.AtualizarMeiosPosto(idPosto, idRede, meios)
+	if err != nil {
+		switch {
+		case errors.Is(err, servicos.ErrDadosInvalidos):
+			utils.ResponderErro(w, http.StatusBadRequest, "habilite ao menos um meio permitido pela rede")
+		case errors.Is(err, repositorios.ErrRedeNaoEncontrada):
+			utils.ResponderErro(w, http.StatusNotFound, "rede nao encontrada")
+		case errors.Is(err, repositorios.ErrPostoNaoEncontradoNaRede):
+			utils.ResponderErro(w, http.StatusNotFound, "posto nao encontrado nesta rede")
+		default:
+			utils.ResponderErro(w, http.StatusBadRequest, err.Error())
+		}
+		return
+	}
+	utils.ResponderJSON(w, http.StatusOK, map[string]any{
+		"mensagem": "meios do posto atualizados",
+		"posto":    p,
+	})
+}
+
 func (h *Handlers) ListarPremiosGestorRede(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
 		utils.ResponderErro(w, http.StatusMethodNotAllowed, "metodo nao permitido")

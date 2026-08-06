@@ -23,12 +23,7 @@ var ErrCodigoPostoDuplicadoNaRede = errors.New("codigo do posto ja existe nesta 
 var ErrCNPJPostoDuplicado = errors.New("cnpj ja cadastrado para outro posto")
 var ErrPostoNaoEncontradoNaRede = errors.New("posto nao encontrado nesta rede")
 
-func (r *postoPostgres) ListarPorRedeID(idRede string) ([]*modelos.Posto, error) {
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-	defer cancel()
-
-	const query = `
-SELECT
+const postoSelectCols = `
   id::text,
   rede_id::text,
   nome,
@@ -45,8 +40,33 @@ SELECT
   COALESCE(estado, ''),
   COALESCE(telefone, ''),
   COALESCE(email_contato, ''),
+  COALESCE(gateway_meios_habilitados, '{"pix":true}'::jsonb),
   criado_em,
-  atualizado_em
+  atualizado_em`
+
+func scanPosto(scanner interface {
+	Scan(dest ...any) error
+}, p *modelos.Posto) error {
+	var meiosRaw []byte
+	if err := scanner.Scan(
+		&p.ID, &p.IDRede, &p.Nome, &p.Codigo,
+		&p.NomeFantasia, &p.CNPJ, &p.LogoURL,
+		&p.Rua, &p.Numero, &p.Bairro, &p.Complemento, &p.CEP,
+		&p.Cidade, &p.Estado, &p.Telefone, &p.EmailContato,
+		&meiosRaw,
+		&p.CriadoEm, &p.AtualizadoEm,
+	); err != nil {
+		return err
+	}
+	p.GatewayMeiosHabilitados = modelos.ParseGatewayMeiosJSON(meiosRaw)
+	return nil
+}
+
+func (r *postoPostgres) ListarPorRedeID(idRede string) ([]*modelos.Posto, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	query := `SELECT ` + postoSelectCols + `
 FROM postos
 WHERE rede_id = $1::uuid
 ORDER BY nome ASC`
@@ -60,13 +80,7 @@ ORDER BY nome ASC`
 	var lista []*modelos.Posto
 	for rows.Next() {
 		var p modelos.Posto
-		if err := rows.Scan(
-			&p.ID, &p.IDRede, &p.Nome, &p.Codigo,
-			&p.NomeFantasia, &p.CNPJ, &p.LogoURL,
-			&p.Rua, &p.Numero, &p.Bairro, &p.Complemento, &p.CEP,
-			&p.Cidade, &p.Estado, &p.Telefone, &p.EmailContato,
-			&p.CriadoEm, &p.AtualizadoEm,
-		); err != nil {
+		if err := scanPosto(rows, &p); err != nil {
 			return nil, err
 		}
 		lista = append(lista, &p)
@@ -77,23 +91,46 @@ ORDER BY nome ASC`
 	return lista, nil
 }
 
+func (r *postoPostgres) BuscarPorIDNaRede(idPosto, idRede string) (*modelos.Posto, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	query := `SELECT ` + postoSelectCols + `
+FROM postos
+WHERE id = $1::uuid AND rede_id = $2::uuid`
+
+	var p modelos.Posto
+	err := scanPosto(r.db.QueryRowContext(ctx, query, strings.TrimSpace(idPosto), strings.TrimSpace(idRede)), &p)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, ErrPostoNaoEncontradoNaRede
+		}
+		return nil, err
+	}
+	return &p, nil
+}
+
 func (r *postoPostgres) Criar(p *modelos.Posto) error {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
+
+	meiosJSON := mustGatewayMeiosJSON(p.GatewayMeiosHabilitados)
 
 	const query = `
 INSERT INTO postos (
   rede_id, nome, codigo,
   nome_fantasia, cnpj, logo_url,
   rua, numero, bairro, complemento, cep,
-  cidade, estado, telefone, email_contato
+  cidade, estado, telefone, email_contato,
+  gateway_meios_habilitados
 )
 VALUES (
   $1::uuid, $2, $3,
   NULLIF($4, ''), NULLIF($5, ''), NULLIF($6, ''),
   NULLIF($7, ''), NULLIF($8, ''), NULLIF($9, ''), NULLIF($10, ''), NULLIF($11, ''),
   NULLIF($12, ''), NULLIF($13, ''),
-  NULLIF($14, ''), NULLIF($15, '')
+  NULLIF($14, ''), NULLIF($15, ''),
+  $16::jsonb
 )
 RETURNING id::text, criado_em, atualizado_em`
 
@@ -115,6 +152,7 @@ RETURNING id::text, criado_em, atualizado_em`
 		strings.TrimSpace(p.Estado),
 		strings.TrimSpace(p.Telefone),
 		strings.TrimSpace(p.EmailContato),
+		meiosJSON,
 	).Scan(&p.ID, &p.CriadoEm, &p.AtualizadoEm)
 	if err != nil {
 		return mapearErroPostoPostgres(err)
@@ -172,6 +210,27 @@ RETURNING criado_em, atualizado_em`
 		return mapearErroPostoPostgres(err)
 	}
 	return nil
+}
+
+func (r *postoPostgres) AtualizarMeiosNaRede(idPosto, idRede string, meios modelos.GatewayMeiosHabilitados) (*modelos.Posto, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	meiosJSON := mustGatewayMeiosJSON(meios)
+
+	query := `UPDATE postos SET gateway_meios_habilitados = $3::jsonb
+WHERE id = $1::uuid AND rede_id = $2::uuid
+RETURNING ` + postoSelectCols
+
+	var p modelos.Posto
+	err := scanPosto(r.db.QueryRowContext(ctx, query, strings.TrimSpace(idPosto), strings.TrimSpace(idRede), meiosJSON), &p)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, ErrPostoNaoEncontradoNaRede
+		}
+		return nil, err
+	}
+	return &p, nil
 }
 
 func mapearErroPostoPostgres(err error) error {

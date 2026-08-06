@@ -47,7 +47,7 @@ func NovoAutenticadorToken(tokenPadrao string) Autenticador {
 // NovoAutenticadorTokenComPersistencia: grava tok_* no Postgres; sobrevive a restarts; expiracao de [dur].
 func NovoAutenticadorTokenComPersistencia(db *sql.DB, tokenPadrao string, dur time.Duration) Autenticador {
 	if dur < time.Hour {
-		dur = 30 * 24 * time.Hour
+		dur = 180 * 24 * time.Hour
 	}
 	return &autenticadorToken{
 		tokenPadrao:   tokenPadrao,

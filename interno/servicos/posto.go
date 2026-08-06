@@ -11,14 +11,18 @@ import (
 
 type ServicoPosto interface {
 	ListarPorRedeID(idRede string) ([]*modelos.Posto, error)
+	BuscarPorIDNaRede(idPosto, idRede string) (*modelos.Posto, error)
 	CriarPostoNaRede(p *modelos.Posto) (*modelos.Posto, error)
 	AtualizarPostoNaRede(p *modelos.Posto) (*modelos.Posto, error)
+	AtualizarMeiosPosto(idPosto, idRede string, meios modelos.GatewayMeiosHabilitados) (*modelos.Posto, error)
 }
 
 type postoRepositorio interface {
 	ListarPorRedeID(idRede string) ([]*modelos.Posto, error)
+	BuscarPorIDNaRede(idPosto, idRede string) (*modelos.Posto, error)
 	Criar(p *modelos.Posto) error
 	AtualizarNaRede(p *modelos.Posto) error
+	AtualizarMeiosNaRede(idPosto, idRede string, meios modelos.GatewayMeiosHabilitados) (*modelos.Posto, error)
 }
 
 type servicoPosto struct {
@@ -42,6 +46,15 @@ func (s *servicoPosto) ListarPorRedeID(idRede string) ([]*modelos.Posto, error) 
 		return nil, err
 	}
 	return s.repoPosto.ListarPorRedeID(idRede)
+}
+
+func (s *servicoPosto) BuscarPorIDNaRede(idPosto, idRede string) (*modelos.Posto, error) {
+	idPosto = strings.TrimSpace(idPosto)
+	idRede = strings.TrimSpace(idRede)
+	if idPosto == "" || idRede == "" {
+		return nil, ErrDadosInvalidos
+	}
+	return s.repoPosto.BuscarPorIDNaRede(idPosto, idRede)
 }
 
 func apenasDigitos(s string) string {
@@ -123,6 +136,14 @@ func (s *servicoPosto) CriarPostoNaRede(p *modelos.Posto) (*modelos.Posto, error
 		return nil, err
 	}
 
+	if !p.GatewayMeiosHabilitados.TemAlgumMeio() {
+		rede, err := s.repoRede.BuscarPorID(p.IDRede)
+		if err != nil {
+			return nil, err
+		}
+		p.GatewayMeiosHabilitados = rede.GatewayMeiosHabilitados
+	}
+
 	if err := s.repoPosto.Criar(p); err != nil {
 		return nil, err
 	}
@@ -149,4 +170,25 @@ func (s *servicoPosto) AtualizarPostoNaRede(p *modelos.Posto) (*modelos.Posto, e
 		return nil, err
 	}
 	return p, nil
+}
+
+func (s *servicoPosto) AtualizarMeiosPosto(idPosto, idRede string, meios modelos.GatewayMeiosHabilitados) (*modelos.Posto, error) {
+	idPosto = strings.TrimSpace(idPosto)
+	idRede = strings.TrimSpace(idRede)
+	if idPosto == "" || idRede == "" {
+		return nil, ErrDadosInvalidos
+	}
+	rede, err := s.repoRede.BuscarPorID(idRede)
+	if err != nil {
+		return nil, err
+	}
+	// Posto só pode ligar o que a rede já permite.
+	meios = modelos.IntersecaoMeios(rede.GatewayMeiosHabilitados, meios)
+	if !meios.TemAlgumMeio() {
+		return nil, ErrDadosInvalidos
+	}
+	if err := ValidarMeiosParaProvedor(NormalizarGatewayProvedorAtivo(rede.GatewayProvedorAtivo), meios); err != nil {
+		return nil, err
+	}
+	return s.repoPosto.AtualizarMeiosNaRede(idPosto, idRede, meios)
 }

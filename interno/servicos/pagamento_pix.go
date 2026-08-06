@@ -2,6 +2,7 @@ package servicos
 
 import (
 	"encoding/json"
+	"fmt"
 	"strconv"
 	"strings"
 
@@ -73,6 +74,7 @@ func RespostaPixVoucherJSON(reg *repositorios.VoucherCompraRegistro, pix *PixCob
 			out["payment_id"] = 0
 		}
 	}
+	anexarMoedaNaResposta(out, reg)
 	return out
 }
 
@@ -80,11 +82,44 @@ func ValidarMeiosParaProvedor(provedor string, m modelos.GatewayMeiosHabilitados
 	provedor = NormalizarGatewayProvedorAtivo(provedor)
 	if provedor == modelos.GatewayProvedorERede {
 		if m.CartaoCredito || m.CartaoDebito {
-			return ErrDadosInvalidos // fase 1: e.Rede só PIX
+			return ErrDadosInvalidos // fase 1: e.Rede só PIX (+ dinheiro offline)
 		}
 	}
-	if !m.Pix && !m.CartaoCredito && !m.CartaoDebito {
+	if !m.TemAlgumMeio() {
 		return ErrDadosInvalidos
 	}
 	return nil
+}
+
+// RespostaDinheiroVoucherJSON resposta da compra em dinheiro (código imediato).
+func RespostaDinheiroVoucherJSON(reg *repositorios.VoucherCompraRegistro) map[string]any {
+	cod := ""
+	if reg.CodigoResgate != nil {
+		cod = strings.TrimSpace(*reg.CodigoResgate)
+	}
+	avisoTitulo := "Pague em dinheiro no posto"
+	avisoCorpo := "Apresente o código ou QR ao frentista. O voucher só será aprovado após o pagamento em dinheiro."
+	restante := ValorRestanteACobrar(reg)
+	if UsouMoedaVirtual(reg) && restante > 0 {
+		avisoTitulo = "Pague o restante em dinheiro"
+		avisoCorpo = fmt.Sprintf(
+			"Parte já foi paga com moeda virtual. O frentista deve cobrar apenas R$ %.2f.",
+			restante,
+		)
+	}
+	out := map[string]any{
+		"compra_id":           reg.ID,
+		"status":              reg.Status,
+		"meio_pagamento":      reg.MeioPagamento,
+		"valor_final":         reg.ValorFinal,
+		"tipo_beneficio":      reg.TipoBeneficio,
+		"cashback_percentual": reg.CashbackPercentual,
+		"cashback_previsto":   reg.CashbackValor,
+		"codigo_resgate":      cod,
+		"expira_resgate_em":   reg.ExpiraResgate,
+		"aviso_titulo":        avisoTitulo,
+		"aviso_corpo":         avisoCorpo,
+	}
+	anexarMoedaNaResposta(out, reg)
+	return out
 }

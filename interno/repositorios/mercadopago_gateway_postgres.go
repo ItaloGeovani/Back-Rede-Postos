@@ -6,6 +6,8 @@ import (
 	"errors"
 	"strings"
 	"time"
+
+	"gaspass-servidor/interno/modelos"
 )
 
 type mercadoPagoGatewayPostgres struct {
@@ -142,7 +144,8 @@ SELECT
   p.nome,
   p.codigo,
   (COALESCE(TRIM(pmp.mp_access_token), '') <> '') AS token_ok,
-  (COALESCE(TRIM(pmp.mp_webhook_secret), '') <> '') AS secret_ok
+  (COALESCE(TRIM(pmp.mp_webhook_secret), '') <> '') AS secret_ok,
+  COALESCE(p.gateway_meios_habilitados, '{"pix":true}'::jsonb)
 FROM postos p
 LEFT JOIN posto_mercado_pago pmp ON pmp.posto_id = p.id
 WHERE p.rede_id = $1::uuid
@@ -157,9 +160,11 @@ ORDER BY p.nome ASC`
 	var out []PostoMercadoPagoStatus
 	for rows.Next() {
 		var s PostoMercadoPagoStatus
-		if err := rows.Scan(&s.PostoID, &s.Nome, &s.Codigo, &s.MpAccessTokenOK, &s.MpWebhookSecretOK); err != nil {
+		var meiosRaw []byte
+		if err := rows.Scan(&s.PostoID, &s.Nome, &s.Codigo, &s.MpAccessTokenOK, &s.MpWebhookSecretOK, &meiosRaw); err != nil {
 			return nil, err
 		}
+		s.GatewayMeiosHabilitados = modelos.ParseGatewayMeiosJSON(meiosRaw)
 		out = append(out, s)
 	}
 	return out, rows.Err()

@@ -28,21 +28,106 @@ func (r *voucherCompraPostgres) CriarPendenteComPix(x *VoucherCompraRegistro) er
 	if x.ReferenciaPagamento != nil {
 		ref = *x.ReferenciaPagamento
 	}
+	meio := strings.TrimSpace(x.MeioPagamento)
+	if meio == "" {
+		meio = "PIX"
+	}
 	comb := nullUUIDString(x.CombustivelRedeID)
 	return r.db.QueryRowContext(ctx, `
 INSERT INTO voucher_compras (
   id, rede_id, usuario_id, campanha_id, combustivel_rede_id, posto_id_compra, valor_solicitado, desconto_aplicado, valor_final,
-  tipo_beneficio, cashback_percentual, cashback_valor, litros, status,
-  gateway_provedor, gateway_tid, mp_payment_id, referencia_pagamento, expira_pagamento_em, criado_em, atualizado_em
+  tipo_beneficio, cashback_percentual, cashback_valor, litros, status, meio_pagamento,
+  gateway_provedor, gateway_tid, mp_payment_id, referencia_pagamento, expira_pagamento_em,
+  valor_moeda_fiat, valor_moeda_token, moeda_debitada_em,
+  criado_em, atualizado_em
 ) VALUES (
   $1::uuid, $2::uuid, $3::uuid, $4, $5, $6, $7, $8, $9,
-  $10, $11, $12, $13, $14::status_voucher_compra,
-  $15, $16, $17, $18, $19, NOW(), NOW()
+  $10, $11, $12, $13, $14::status_voucher_compra, $15,
+  $16, $17, $18, $19, $20,
+  $21, $22, $23,
+  NOW(), NOW()
 )
 RETURNING id::text, criado_em, atualizado_em
 `, x.ID, x.RedeID, x.UsuarioID, camp, comb, nullUUIDString(x.PostoCompraID), x.ValorSolicitado, x.DescontoAplicado, x.ValorFinal,
-		emptyAsDefault(x.TipoBeneficio, "DESCONTO"), nullFloat64IfPositive(x.CashbackPercentual), x.CashbackValor, nullFloat64Ptr(x.Litros), x.Status,
+		emptyAsDefault(x.TipoBeneficio, "DESCONTO"), nullFloat64IfPositive(x.CashbackPercentual), x.CashbackValor, nullFloat64Ptr(x.Litros), x.Status, meio,
 		nullStringPtr(x.GatewayProvedor), nullStringPtrPtr(x.GatewayTID), mpID, nullStringPtr(ref), x.ExpiraPagamento,
+		x.ValorMoedaFiat, x.ValorMoedaToken, x.MoedaDebitadaEm,
+	).Scan(&x.ID, &x.CriadoEm, &x.AtualizadoEm)
+}
+
+func (r *voucherCompraPostgres) CriarAguardandoDinheiro(x *VoucherCompraRegistro) error {
+	ctx, cancel := context.WithTimeout(context.Background(), 8*time.Second)
+	defer cancel()
+	camp := nullUUIDString(x.CampanhaID)
+	comb := nullUUIDString(x.CombustivelRedeID)
+	cod := ""
+	if x.CodigoResgate != nil {
+		cod = strings.TrimSpace(*x.CodigoResgate)
+	}
+	if cod == "" {
+		return errors.New("codigo_resgate obrigatorio para voucher dinheiro")
+	}
+	meio := strings.TrimSpace(x.MeioPagamento)
+	if meio == "" {
+		meio = "DINHEIRO"
+	}
+	return r.db.QueryRowContext(ctx, `
+INSERT INTO voucher_compras (
+  id, rede_id, usuario_id, campanha_id, combustivel_rede_id, posto_id_compra, valor_solicitado, desconto_aplicado, valor_final,
+  tipo_beneficio, cashback_percentual, cashback_valor, litros, status, meio_pagamento,
+  codigo_resgate, expira_resgate_em,
+  valor_moeda_fiat, valor_moeda_token, moeda_debitada_em,
+  criado_em, atualizado_em
+) VALUES (
+  $1::uuid, $2::uuid, $3::uuid, $4, $5, $6, $7, $8, $9,
+  $10, $11, $12, $13, $14::status_voucher_compra, $15,
+  $16, $17,
+  $18, $19, $20,
+  NOW(), NOW()
+)
+RETURNING id::text, criado_em, atualizado_em
+`, x.ID, x.RedeID, x.UsuarioID, camp, comb, nullUUIDString(x.PostoCompraID), x.ValorSolicitado, x.DescontoAplicado, x.ValorFinal,
+		emptyAsDefault(x.TipoBeneficio, "DESCONTO"), nullFloat64IfPositive(x.CashbackPercentual), x.CashbackValor, nullFloat64Ptr(x.Litros), x.Status, meio,
+		cod, x.ExpiraResgate,
+		x.ValorMoedaFiat, x.ValorMoedaToken, x.MoedaDebitadaEm,
+	).Scan(&x.ID, &x.CriadoEm, &x.AtualizadoEm)
+}
+
+func (r *voucherCompraPostgres) CriarAtivoMoedaVirtual(x *VoucherCompraRegistro) error {
+	ctx, cancel := context.WithTimeout(context.Background(), 8*time.Second)
+	defer cancel()
+	camp := nullUUIDString(x.CampanhaID)
+	comb := nullUUIDString(x.CombustivelRedeID)
+	cod := ""
+	if x.CodigoResgate != nil {
+		cod = strings.TrimSpace(*x.CodigoResgate)
+	}
+	if cod == "" {
+		return errors.New("codigo_resgate obrigatorio para voucher moeda virtual")
+	}
+	meio := strings.TrimSpace(x.MeioPagamento)
+	if meio == "" {
+		meio = "MOEDA_VIRTUAL"
+	}
+	return r.db.QueryRowContext(ctx, `
+INSERT INTO voucher_compras (
+  id, rede_id, usuario_id, campanha_id, combustivel_rede_id, posto_id_compra, valor_solicitado, desconto_aplicado, valor_final,
+  tipo_beneficio, cashback_percentual, cashback_valor, litros, status, meio_pagamento,
+  codigo_resgate, expira_resgate_em,
+  valor_moeda_fiat, valor_moeda_token, moeda_debitada_em,
+  criado_em, atualizado_em
+) VALUES (
+  $1::uuid, $2::uuid, $3::uuid, $4, $5, $6, $7, $8, $9,
+  $10, $11, $12, $13, $14::status_voucher_compra, $15,
+  $16, $17,
+  $18, $19, $20,
+  NOW(), NOW()
+)
+RETURNING id::text, criado_em, atualizado_em
+`, x.ID, x.RedeID, x.UsuarioID, camp, comb, nullUUIDString(x.PostoCompraID), x.ValorSolicitado, x.DescontoAplicado, x.ValorFinal,
+		emptyAsDefault(x.TipoBeneficio, "DESCONTO"), nullFloat64IfPositive(x.CashbackPercentual), x.CashbackValor, nullFloat64Ptr(x.Litros), x.Status, meio,
+		cod, x.ExpiraResgate,
+		x.ValorMoedaFiat, x.ValorMoedaToken, x.MoedaDebitadaEm,
 	).Scan(&x.ID, &x.CriadoEm, &x.AtualizadoEm)
 }
 
@@ -97,22 +182,27 @@ func scanVcr(s scannerVcr, x *VoucherCompraRegistro) error {
 	var mpID sql.NullInt64
 	var gwProv, gwTID sql.NullString
 	var litros, cashbackPct, cashbackVal sql.NullFloat64
-	var exPag, exRes, usado, cashbackCred sql.NullTime
+	var exPag, exRes, usado, cashbackCred, moedaDeb sql.NullTime
 	var tipoBeneficio sql.NullString
 	var combID, combNome sql.NullString
 	var postoCompraID sql.NullString
 	var postoID, postoNome, opUID, opPapel, opNome sql.NullString
+	var moedaFiat, moedaToken float64
 	err := s.Scan(
 		&x.ID, &x.RedeID, &x.UsuarioID, &camp, &x.ValorSolicitado, &x.DescontoAplicado, &x.ValorFinal,
-		&tipoBeneficio, &cashbackPct, &cashbackVal, &cashbackCred, &litros, &x.Status,
+		&tipoBeneficio, &cashbackPct, &cashbackVal, &cashbackCred, &litros, &x.Status, &x.MeioPagamento,
 		&gwProv, &gwTID,
 		&mpID, &ref, &cod, &exPag, &exRes, &x.CriadoEm, &x.AtualizadoEm,
 		&combID, &combNome,
 		&postoCompraID,
 		&usado, &postoID, &postoNome, &opUID, &opPapel, &opNome,
+		&moedaFiat, &moedaToken, &moedaDeb,
 	)
 	if err != nil {
 		return err
+	}
+	if strings.TrimSpace(x.MeioPagamento) == "" {
+		x.MeioPagamento = "PIX"
 	}
 	if litros.Valid {
 		v := litros.Float64
@@ -158,6 +248,13 @@ func scanVcr(s scannerVcr, x *VoucherCompraRegistro) error {
 	if exRes.Valid {
 		t := exRes.Time
 		x.ExpiraResgate = &t
+	}
+	x.ValorMoedaFiat = moedaFiat
+	x.ValorMoedaToken = moedaToken
+	x.MoedaDebitadaEm = nil
+	if moedaDeb.Valid {
+		t := moedaDeb.Time
+		x.MoedaDebitadaEm = &t
 	}
 	preencherCombustivelRede(x, combID, combNome)
 	preencherPostoCompra(x, postoCompraID)
@@ -245,24 +342,29 @@ func scanVcrComCampanha(s scannerVcr, x *VoucherCompraRegistro) error {
 	var mpID sql.NullInt64
 	var gwProv, gwTID sql.NullString
 	var litros, cashbackPct, cashbackVal sql.NullFloat64
-	var exPag, exRes, usado, cashbackCred sql.NullTime
+	var exPag, exRes, usado, cashbackCred, moedaDeb sql.NullTime
 	var tipoBeneficio sql.NullString
 	var cbCamp, cbTit sql.NullString
 	var combID, combNome sql.NullString
 	var postoCompraID sql.NullString
 	var postoID, postoNome, opUID, opPapel, opNome sql.NullString
+	var moedaFiat, moedaToken float64
 	err := s.Scan(
 		&x.ID, &x.RedeID, &x.UsuarioID, &camp, &x.ValorSolicitado, &x.DescontoAplicado, &x.ValorFinal,
-		&tipoBeneficio, &cashbackPct, &cashbackVal, &cashbackCred, &litros, &x.Status,
+		&tipoBeneficio, &cashbackPct, &cashbackVal, &cashbackCred, &litros, &x.Status, &x.MeioPagamento,
 		&gwProv, &gwTID,
 		&mpID, &ref, &cod, &exPag, &exRes, &x.CriadoEm, &x.AtualizadoEm,
 		&cbCamp, &cbTit,
 		&combID, &combNome,
 		&postoCompraID,
 		&usado, &postoID, &postoNome, &opUID, &opPapel, &opNome,
+		&moedaFiat, &moedaToken, &moedaDeb,
 	)
 	if err != nil {
 		return err
+	}
+	if strings.TrimSpace(x.MeioPagamento) == "" {
+		x.MeioPagamento = "PIX"
 	}
 	if litros.Valid {
 		v := litros.Float64
@@ -308,6 +410,13 @@ func scanVcrComCampanha(s scannerVcr, x *VoucherCompraRegistro) error {
 	if exRes.Valid {
 		t := exRes.Time
 		x.ExpiraResgate = &t
+	}
+	x.ValorMoedaFiat = moedaFiat
+	x.ValorMoedaToken = moedaToken
+	x.MoedaDebitadaEm = nil
+	if moedaDeb.Valid {
+		t := moedaDeb.Time
+		x.MoedaDebitadaEm = &t
 	}
 	preencherTipoCampanhaDoJoin(x, cbCamp, cbTit)
 	preencherCombustivelRede(x, combID, combNome)
@@ -322,15 +431,16 @@ func scanVcrEquipe(s scannerVcr, x *VoucherCompraRegistro, clienteNome, clienteE
 	var mpID sql.NullInt64
 	var gwProv, gwTID sql.NullString
 	var litros, cashbackPct, cashbackVal sql.NullFloat64
-	var exPag, exRes, usado, cashbackCred sql.NullTime
+	var exPag, exRes, usado, cashbackCred, moedaDeb sql.NullTime
 	var tipoBeneficio sql.NullString
 	var cbCamp, cbTit sql.NullString
 	var combID, combNome sql.NullString
 	var postoCompraID sql.NullString
 	var postoID, postoNome, opUID, opPapel, opNome sql.NullString
+	var moedaFiat, moedaToken float64
 	err := s.Scan(
 		&x.ID, &x.RedeID, &x.UsuarioID, &camp, &x.ValorSolicitado, &x.DescontoAplicado, &x.ValorFinal,
-		&tipoBeneficio, &cashbackPct, &cashbackVal, &cashbackCred, &litros, &x.Status,
+		&tipoBeneficio, &cashbackPct, &cashbackVal, &cashbackCred, &litros, &x.Status, &x.MeioPagamento,
 		&gwProv, &gwTID,
 		&mpID, &ref, &cod, &exPag, &exRes, &x.CriadoEm, &x.AtualizadoEm,
 		clienteNome, clienteEmail,
@@ -338,9 +448,13 @@ func scanVcrEquipe(s scannerVcr, x *VoucherCompraRegistro, clienteNome, clienteE
 		&combID, &combNome,
 		&postoCompraID,
 		&usado, &postoID, &postoNome, &opUID, &opPapel, &opNome,
+		&moedaFiat, &moedaToken, &moedaDeb,
 	)
 	if err != nil {
 		return err
+	}
+	if strings.TrimSpace(x.MeioPagamento) == "" {
+		x.MeioPagamento = "PIX"
 	}
 	if litros.Valid {
 		v := litros.Float64
@@ -386,6 +500,13 @@ func scanVcrEquipe(s scannerVcr, x *VoucherCompraRegistro, clienteNome, clienteE
 	if exRes.Valid {
 		t := exRes.Time
 		x.ExpiraResgate = &t
+	}
+	x.ValorMoedaFiat = moedaFiat
+	x.ValorMoedaToken = moedaToken
+	x.MoedaDebitadaEm = nil
+	if moedaDeb.Valid {
+		t := moedaDeb.Time
+		x.MoedaDebitadaEm = &t
 	}
 	preencherTipoCampanhaDoJoin(x, cbCamp, cbTit)
 	preencherCombustivelRede(x, combID, combNome)
@@ -403,7 +524,7 @@ SELECT
   v.id::text, v.rede_id::text, v.usuario_id::text, v.campanha_id::text,
   v.valor_solicitado, v.desconto_aplicado, v.valor_final,
   v.tipo_beneficio, v.cashback_percentual::float8, v.cashback_valor::float8, v.cashback_creditado_em,
-  v.litros::float8, v.status::text,
+  v.litros::float8, v.status::text, COALESCE(NULLIF(TRIM(v.meio_pagamento), ''), 'PIX'),
   v.gateway_provedor, v.gateway_tid,
   v.mp_payment_id, v.referencia_pagamento, v.codigo_resgate, v.expira_pagamento_em, v.expira_resgate_em, v.criado_em, v.atualizado_em,
   c.base_desconto,
@@ -413,7 +534,8 @@ SELECT
   v.posto_id_compra::text,
   v.usado_em, v.posto_id_uso::text,
   COALESCE(NULLIF(TRIM(pu.nome), ''), ''),
-  v.operador_usuario_id::text, v.operador_papel, v.operador_nome_snapshot
+  v.operador_usuario_id::text, v.operador_papel, v.operador_nome_snapshot,
+  COALESCE(v.valor_moeda_fiat, 0)::float8, COALESCE(v.valor_moeda_token, 0)::float8, v.moeda_debitada_em
 FROM voucher_compras v
 LEFT JOIN campanhas c ON c.id = v.campanha_id AND c.rede_id = v.rede_id
 LEFT JOIN rede_combustiveis comb ON comb.id = v.combustivel_rede_id AND comb.rede_id = v.rede_id
@@ -441,7 +563,7 @@ SELECT
   v.id::text, v.rede_id::text, v.usuario_id::text, v.campanha_id::text,
   v.valor_solicitado, v.desconto_aplicado, v.valor_final,
   v.tipo_beneficio, v.cashback_percentual::float8, v.cashback_valor::float8, v.cashback_creditado_em,
-  v.litros::float8, v.status::text,
+  v.litros::float8, v.status::text, COALESCE(NULLIF(TRIM(v.meio_pagamento), ''), 'PIX'),
   v.gateway_provedor, v.gateway_tid,
   v.mp_payment_id, v.referencia_pagamento, v.codigo_resgate, v.expira_pagamento_em, v.expira_resgate_em, v.criado_em, v.atualizado_em,
   c.base_desconto,
@@ -451,7 +573,8 @@ SELECT
   v.posto_id_compra::text,
   v.usado_em, v.posto_id_uso::text,
   COALESCE(NULLIF(TRIM(pu.nome), ''), ''),
-  v.operador_usuario_id::text, v.operador_papel, v.operador_nome_snapshot
+  v.operador_usuario_id::text, v.operador_papel, v.operador_nome_snapshot,
+  COALESCE(v.valor_moeda_fiat, 0)::float8, COALESCE(v.valor_moeda_token, 0)::float8, v.moeda_debitada_em
 FROM voucher_compras v
 LEFT JOIN campanhas c ON c.id = v.campanha_id AND c.rede_id = v.rede_id
 LEFT JOIN rede_combustiveis comb ON comb.id = v.combustivel_rede_id AND comb.rede_id = v.rede_id
@@ -528,7 +651,7 @@ SELECT
   v.id::text, v.rede_id::text, v.usuario_id::text, v.campanha_id::text,
   v.valor_solicitado, v.desconto_aplicado, v.valor_final,
   v.tipo_beneficio, v.cashback_percentual::float8, v.cashback_valor::float8, v.cashback_creditado_em,
-  v.litros::float8, v.status::text,
+  v.litros::float8, v.status::text, COALESCE(NULLIF(TRIM(v.meio_pagamento), ''), 'PIX'),
   v.gateway_provedor, v.gateway_tid,
   v.mp_payment_id, v.referencia_pagamento, v.codigo_resgate, v.expira_pagamento_em, v.expira_resgate_em, v.criado_em, v.atualizado_em,
   v.combustivel_rede_id::text,
@@ -536,7 +659,8 @@ SELECT
   v.posto_id_compra::text,
   v.usado_em, v.posto_id_uso::text,
   COALESCE(NULLIF(TRIM(pu.nome), ''), ''),
-  v.operador_usuario_id::text, v.operador_papel, v.operador_nome_snapshot
+  v.operador_usuario_id::text, v.operador_papel, v.operador_nome_snapshot,
+  COALESCE(v.valor_moeda_fiat, 0)::float8, COALESCE(v.valor_moeda_token, 0)::float8, v.moeda_debitada_em
 FROM voucher_compras v
 LEFT JOIN rede_combustiveis comb ON comb.id = v.combustivel_rede_id AND comb.rede_id = v.rede_id
 LEFT JOIN postos pu ON pu.id = v.posto_id_uso AND pu.rede_id = v.rede_id
@@ -561,7 +685,7 @@ SELECT
   v.id::text, v.rede_id::text, v.usuario_id::text, v.campanha_id::text,
   v.valor_solicitado, v.desconto_aplicado, v.valor_final,
   v.tipo_beneficio, v.cashback_percentual::float8, v.cashback_valor::float8, v.cashback_creditado_em,
-  v.litros::float8, v.status::text,
+  v.litros::float8, v.status::text, COALESCE(NULLIF(TRIM(v.meio_pagamento), ''), 'PIX'),
   v.gateway_provedor, v.gateway_tid,
   v.mp_payment_id, v.referencia_pagamento, v.codigo_resgate, v.expira_pagamento_em, v.expira_resgate_em, v.criado_em, v.atualizado_em,
   v.combustivel_rede_id::text,
@@ -569,7 +693,8 @@ SELECT
   v.posto_id_compra::text,
   v.usado_em, v.posto_id_uso::text,
   COALESCE(NULLIF(TRIM(pu.nome), ''), ''),
-  v.operador_usuario_id::text, v.operador_papel, v.operador_nome_snapshot
+  v.operador_usuario_id::text, v.operador_papel, v.operador_nome_snapshot,
+  COALESCE(v.valor_moeda_fiat, 0)::float8, COALESCE(v.valor_moeda_token, 0)::float8, v.moeda_debitada_em
 FROM voucher_compras v
 LEFT JOIN rede_combustiveis comb ON comb.id = v.combustivel_rede_id AND comb.rede_id = v.rede_id
 LEFT JOIN postos pu ON pu.id = v.posto_id_uso AND pu.rede_id = v.rede_id
@@ -598,7 +723,7 @@ SELECT
   v.id::text, v.rede_id::text, v.usuario_id::text, v.campanha_id::text,
   v.valor_solicitado, v.desconto_aplicado, v.valor_final,
   v.tipo_beneficio, v.cashback_percentual::float8, v.cashback_valor::float8, v.cashback_creditado_em,
-  v.litros::float8, v.status::text,
+  v.litros::float8, v.status::text, COALESCE(NULLIF(TRIM(v.meio_pagamento), ''), 'PIX'),
   v.gateway_provedor, v.gateway_tid,
   v.mp_payment_id, v.referencia_pagamento, v.codigo_resgate, v.expira_pagamento_em, v.expira_resgate_em, v.criado_em, v.atualizado_em,
   COALESCE(TRIM(u.nome_completo), ''),
@@ -610,7 +735,8 @@ SELECT
   v.posto_id_compra::text,
   v.usado_em, v.posto_id_uso::text,
   COALESCE(NULLIF(TRIM(pu.nome), ''), ''),
-  v.operador_usuario_id::text, v.operador_papel, v.operador_nome_snapshot
+  v.operador_usuario_id::text, v.operador_papel, v.operador_nome_snapshot,
+  COALESCE(v.valor_moeda_fiat, 0)::float8, COALESCE(v.valor_moeda_token, 0)::float8, v.moeda_debitada_em
 FROM voucher_compras v
 INNER JOIN usuarios u ON u.id = v.usuario_id AND u.rede_id = v.rede_id
 LEFT JOIN campanhas c ON c.id = v.campanha_id AND c.rede_id = v.rede_id
@@ -707,7 +833,7 @@ UPDATE voucher_compras SET
   ),
   atualizado_em = NOW()
 WHERE id = $1::uuid AND rede_id = $2::uuid
-  AND status = 'ATIVO'
+  AND status::text IN ('ATIVO', 'AGUARDANDO_DINHEIRO')
   AND (expira_resgate_em IS NULL OR expira_resgate_em > NOW())
 `, idVoucher, redeID, posto, operadorUsuarioID, strings.TrimSpace(operadorPapel), strings.TrimSpace(operadorNome))
 	if err != nil {
@@ -730,7 +856,7 @@ func scanVoucherPainelLinha(s scannerVcr, x *VoucherCompraPainelLinha) error {
 	var opUID, opPapel, opNome sql.NullString
 	err := s.Scan(
 		&x.ID, &x.UsuarioID, &camp,
-		&x.ValorSolicitado, &x.DescontoAplicado, &x.ValorFinal, &litros, &x.Status,
+		&x.ValorSolicitado, &x.DescontoAplicado, &x.ValorFinal, &litros, &x.Status, &x.MeioPagamento,
 		&cod, &exPag, &exRes, &usado, &x.CriadoEm, &x.AtualizadoEm,
 		&x.ClienteNomeCompleto, &postoNome,
 		&cbCamp, &cbTit,
@@ -739,6 +865,9 @@ func scanVoucherPainelLinha(s scannerVcr, x *VoucherCompraPainelLinha) error {
 	)
 	if err != nil {
 		return err
+	}
+	if strings.TrimSpace(x.MeioPagamento) == "" {
+		x.MeioPagamento = "PIX"
 	}
 	baseCamp := ""
 	if cbCamp.Valid {
@@ -827,6 +956,7 @@ WHERE v.rede_id = $1::uuid
 SELECT
   v.id::text, v.usuario_id::text, v.campanha_id::text,
   v.valor_solicitado, v.desconto_aplicado, v.valor_final, v.litros::float8, v.status::text,
+  COALESCE(NULLIF(TRIM(v.meio_pagamento), ''), 'PIX'),
   v.codigo_resgate, v.expira_pagamento_em, v.expira_resgate_em, v.usado_em, v.criado_em, v.atualizado_em,
   COALESCE(TRIM(u.nome_completo), ''),
   p.nome,

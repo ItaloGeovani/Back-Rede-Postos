@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"io"
+	"log"
 	"net/http"
 	"strings"
 
@@ -33,7 +34,7 @@ func (h *Handlers) GetVoucherConsultaPorCodigoEquipe(w http.ResponseWriter, r *h
 		utils.ResponderErro(w, http.StatusBadRequest, "informe codigo")
 		return
 	}
-	out, err := h.voucherCompraSvc.ConsultarPorCodigoResgateEquipe(u.IDRede, codigo)
+	out, err := h.voucherCompraSvc.ConsultarPorCodigoResgateEquipe(u.IDRede, codigo, u.IDPosto)
 	if err != nil {
 		if errors.Is(err, repositorios.ErrVoucherCompraNaoEncontrado) {
 			utils.ResponderErro(w, http.StatusNotFound, "voucher nao encontrado nesta rede")
@@ -88,10 +89,14 @@ func (h *Handlers) PostVoucherBaixaEquipe(w http.ResponseWriter, r *http.Request
 			utils.ResponderErro(w, http.StatusBadRequest, err.Error())
 			return
 		}
-		if errors.Is(err, servicos.ErrVoucherEquipeNaoAtivoUso) || errors.Is(err, servicos.ErrVoucherEquipeResgateExpirado) || errors.Is(err, repositorios.ErrVoucherBaixaNaoPermitida) {
+		if errors.Is(err, servicos.ErrVoucherEquipeNaoAtivoUso) ||
+			errors.Is(err, servicos.ErrVoucherEquipeResgateExpirado) ||
+			errors.Is(err, servicos.ErrVoucherEquipePostoIncorreto) ||
+			errors.Is(err, repositorios.ErrVoucherBaixaNaoPermitida) {
 			utils.ResponderErro(w, http.StatusConflict, err.Error())
 			return
 		}
+		log.Printf("voucher baixa equipe: %v", err)
 		utils.ResponderErro(w, http.StatusInternalServerError, "falha ao registrar uso do voucher")
 		return
 	}

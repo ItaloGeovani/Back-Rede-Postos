@@ -44,6 +44,9 @@ func RegistrarPrivadas(muxPrincipal *http.ServeMux, h *handlers.Handlers, aut se
 	muxPrivada.Handle("/v1/admin/premios/dev/listar", http.HandlerFunc(h.ListarPremiosRedeDev))
 	muxPrivada.Handle("/v1/admin/premios/dev/criar", http.HandlerFunc(h.CriarPremioRedeDev))
 	muxPrivada.Handle("/v1/admin/premios/dev/editar", http.HandlerFunc(h.EditarPremioRedeDev))
+	muxPrivada.Handle("/v1/admin/premios/dev/resgates/listar", http.HandlerFunc(h.GetPremioResgatesPainel))
+	muxPrivada.Handle("/v1/admin/premios/dev/resgates/entregar", http.HandlerFunc(h.PostPremioResgateEntregar))
+	muxPrivada.Handle("/v1/admin/premios/dev/resgates/cancelar", http.HandlerFunc(h.PostPremioResgateCancelar))
 	muxPrivada.Handle("/v1/admin/upload-imagem", http.HandlerFunc(h.PostUploadImagem))
 
 	chain := append([]middlewares.Middleware{}, mws...)

@@ -31,6 +31,9 @@ func ResolverGatewayPagamento(
 	redeRepo repositorios.RedeRepositorio,
 	mpGW repositorios.MercadoPagoGatewayRepositorio,
 	eredeGW repositorios.ERedeGatewayRepositorio,
+	postoRepo interface {
+		BuscarPorIDNaRede(idPosto, idRede string) (*modelos.Posto, error)
+	},
 	cfg config.Config,
 	idRede string,
 	idPostoRequisicao string,
@@ -43,9 +46,6 @@ func ResolverGatewayPagamento(
 	if err != nil {
 		return nil, err
 	}
-	if !rede.GatewayMeiosHabilitados.Pix {
-		return nil, errors.New("rede nao aceita pagamento pix no momento")
-	}
 	modo := strings.ToUpper(strings.TrimSpace(rede.GatewayPagamentoModo))
 	if modo != modelos.GatewayPagamentoModoPosto {
 		modo = modelos.GatewayPagamentoModoRede
@@ -56,14 +56,29 @@ func ResolverGatewayPagamento(
 	}
 
 	provedor := NormalizarGatewayProvedorAtivo(rede.GatewayProvedorAtivo)
+	meios := rede.GatewayMeiosHabilitados
+	idPosto := strings.TrimSpace(idPostoRequisicao)
+	if idPosto != "" && postoRepo != nil {
+		posto, errP := postoRepo.BuscarPorIDNaRede(idPosto, idRede)
+		if errP != nil {
+			return nil, errP
+		}
+		meios = modelos.IntersecaoMeios(rede.GatewayMeiosHabilitados, posto.GatewayMeiosHabilitados)
+	}
+	if !meios.Pix {
+		if idPosto != "" {
+			return nil, errors.New("este posto nao aceita pagamento pix no momento")
+		}
+		return nil, errors.New("rede nao aceita pagamento pix no momento")
+	}
+
 	out := &GatewayContext{
 		Provedor: provedor,
 		Modo:     modo,
-		Meios:    rede.GatewayMeiosHabilitados,
+		Meios:    meios,
 	}
 
 	if modo == modelos.GatewayPagamentoModoPosto {
-		idPosto := strings.TrimSpace(idPostoRequisicao)
 		if idPosto == "" {
 			return nil, errors.New("informe o posto para pagamento (modo gateway por posto)")
 		}

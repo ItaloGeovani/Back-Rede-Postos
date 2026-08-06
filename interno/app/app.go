@@ -197,16 +197,18 @@ func Nova() (*Aplicacao, error) {
 	svcGireGanhe := servicos.NovoServicoGireGanhe(banco, repoGireGanhe, repoCarteira, svcNiveisCliente, svcUsuarioRede)
 	svcPosto := servicos.NovoServicoPosto(repoPosto, repoRede)
 	svcCampanha := servicos.NovoServicoCampanha(repoCampanha, repoRede, repoCombustivelRede)
-	svcVoucherCompra := servicos.NovoServicoVoucherCompra(repoVoucherCompra, svcCampanha, repoMercadoPagoGateway, repoERedeGateway, repoRede, repoCarteira, repoCombustivelRede, repoUsuarioRede, cfg, svcIndiqueGanhe)
+	svcVoucherCompra := servicos.NovoServicoVoucherCompra(repoVoucherCompra, svcCampanha, repoMercadoPagoGateway, repoERedeGateway, repoRede, repoPosto, repoCarteira, repoCombustivelRede, repoUsuarioRede, cfg, svcIndiqueGanhe)
 	svcCombustivelRede := servicos.NovoServicoCombustivelRede(repoCombustivelRede, repoRede)
 	svcPremio := servicos.NovoServicoPremio(repoPremio, repoRede)
+	repoPremioResgate := repositorios.NovoPremioResgatePostgres(banco)
+	svcPremioResgate := servicos.NovoServicoPremioResgate(banco, repoPremio, repoPremioResgate, repoCarteira, repoRede)
 	if err := bootstrapAdminPadrao(cfg, svcAdmin); err != nil {
 		banco.Close()
 		return nil, err
 	}
 
 	svcUploadImagem := servicos.NovoServicoUploadImagem(cfg)
-	h := handlers.Novos(autenticador, svcAdmin, svcGestor, svcRede, svcUsuarioRede, svcPosto, svcCampanha, svcPremio, repoAuditoria, estatisticasPlataforma, repoAppMobile, repoAppMobileRede, repoAppCards, repoMercadoPagoGateway, repoERedeGateway, svcVoucherCompra, svcCombustivelRede, svcIndiqueGanhe, repoCarteira, svcNiveisCliente, svcCheckinDiario, svcGireGanhe, repoLinksSociais, svcUploadImagem, cfg)
+	h := handlers.Novos(autenticador, svcAdmin, svcGestor, svcRede, svcUsuarioRede, svcPosto, svcCampanha, svcPremio, repoAuditoria, estatisticasPlataforma, repoAppMobile, repoAppMobileRede, repoAppCards, repoMercadoPagoGateway, repoERedeGateway, svcVoucherCompra, svcCombustivelRede, svcIndiqueGanhe, repoCarteira, svcNiveisCliente, svcCheckinDiario, svcGireGanhe, svcPremioResgate, repoLinksSociais, svcUploadImagem, cfg)
 
 	muxPrincipal := http.NewServeMux()
 	mwGlobal := []middlewares.Middleware{

@@ -29,6 +29,7 @@ type Handlers struct {
 	niveisCliente          *servicos.ServicoNiveisCliente
 	checkinDiario          *servicos.ServicoCheckinDiario
 	gireGanhe              *servicos.ServicoGireGanhe
+	premioResgateSvc       *servicos.ServicoPremioResgate
 	redesSociaisRepo       repositorios.RedeLinksSociaisRepositorio
 	uploadImagem           *servicos.ServicoUploadImagem
 	cfg                    config.Config
@@ -57,6 +58,7 @@ func Novos(
 	niveisCliente *servicos.ServicoNiveisCliente,
 	checkinDiario *servicos.ServicoCheckinDiario,
 	gireGanhe *servicos.ServicoGireGanhe,
+	premioResgateSvc *servicos.ServicoPremioResgate,
 	redesSociaisRepo repositorios.RedeLinksSociaisRepositorio,
 	uploadImagem *servicos.ServicoUploadImagem,
 	cfg config.Config,
@@ -84,6 +86,7 @@ func Novos(
 		niveisCliente:          niveisCliente,
 		checkinDiario:          checkinDiario,
 		gireGanhe:              gireGanhe,
+		premioResgateSvc:       premioResgateSvc,
 		redesSociaisRepo:       redesSociaisRepo,
 		uploadImagem:           uploadImagem,
 		cfg:                    cfg,

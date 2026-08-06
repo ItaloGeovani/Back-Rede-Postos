@@ -6,6 +6,8 @@ import (
 	"errors"
 	"strings"
 	"time"
+
+	"gaspass-servidor/interno/modelos"
 )
 
 type eredeGatewayPostgres struct {
@@ -127,7 +129,11 @@ func (r *eredeGatewayPostgres) ListarStatusPostosPorRede(idRede string) ([]Posto
 SELECT
   p.id::text, p.nome, p.codigo,
   (COALESCE(TRIM(pe.pv), '') <> '') AS pv_ok,
-  (COALESCE(TRIM(pe.client_secret), '') <> '') AS secret_ok
+  (COALESCE(TRIM(pe.client_secret), '') <> '') AS secret_ok,
+  COALESCE(TRIM(pe.pv), ''),
+  COALESCE(TRIM(pe.client_secret), ''),
+  COALESCE(NULLIF(TRIM(pe.ambiente), ''), 'sandbox'),
+  COALESCE(p.gateway_meios_habilitados, '{"pix":true}'::jsonb)
 FROM postos p
 LEFT JOIN posto_erede pe ON pe.posto_id = p.id
 WHERE p.rede_id = $1::uuid
@@ -140,9 +146,16 @@ ORDER BY p.nome ASC`
 	var out []PostoERedeStatus
 	for rows.Next() {
 		var s PostoERedeStatus
-		if err := rows.Scan(&s.PostoID, &s.Nome, &s.Codigo, &s.PvConfigurado, &s.SecretConfigurado); err != nil {
+		var meiosRaw []byte
+		if err := rows.Scan(
+			&s.PostoID, &s.Nome, &s.Codigo,
+			&s.PvConfigurado, &s.SecretConfigurado,
+			&s.PV, &s.ClientSecret, &s.Ambiente,
+			&meiosRaw,
+		); err != nil {
 			return nil, err
 		}
+		s.GatewayMeiosHabilitados = modelos.ParseGatewayMeiosJSON(meiosRaw)
 		out = append(out, s)
 	}
 	return out, rows.Err()
