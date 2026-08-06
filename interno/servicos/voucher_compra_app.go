@@ -73,6 +73,7 @@ type ServicoVoucherCompra struct {
 	fcm        repositorios.FCMListador
 	cfg        config.Config
 	indique    *ServicoIndiqueGanhe
+	eventos    *ServicoEventosOperacionais
 }
 
 func NovoServicoVoucherCompra(
@@ -94,6 +95,63 @@ func NovoServicoVoucherCompra(
 		repo: repo, campanha: camp, mpGW: mp, eredeGW: erede, rede: rede, posto: posto,
 		carteira: carteira, combustive: comb, fcm: fcm, cfg: cfg, indique: ind,
 	}
+}
+
+// DefinirEventosOperacionais injeta o serviço de logs/WhatsApp (após construção).
+func (s *ServicoVoucherCompra) DefinirEventosOperacionais(ev *ServicoEventosOperacionais) {
+	if s != nil {
+		s.eventos = ev
+	}
+}
+
+func (s *ServicoVoucherCompra) registrarEventoVoucher(tipo string, reg *repositorios.VoucherCompraRegistro, extra string) {
+	if s == nil || s.eventos == nil || reg == nil {
+		return
+	}
+	idEnt := strings.TrimSpace(reg.ID)
+	var entPtr *string
+	if idEnt != "" {
+		entPtr = &idEnt
+	}
+	cod := ""
+	if reg.CodigoResgate != nil {
+		cod = strings.TrimSpace(*reg.CodigoResgate)
+	}
+	quem := ""
+	if s.eventos != nil {
+		quem = s.eventos.NomeUsuario(reg.UsuarioID, reg.RedeID)
+	}
+	titulo := tipo
+	switch tipo {
+	case modelos.EventoVoucherGerado:
+		titulo = "Voucher gerado"
+	case modelos.EventoVoucherPago:
+		titulo = "Voucher pago"
+	case modelos.EventoVoucherBaixa:
+		titulo = "Voucher baixa"
+	}
+	s.eventos.Registrar(RegistrarEventoInput{
+		IDRede:       reg.RedeID,
+		IDPosto:      reg.PostoCompraID,
+		TipoEvento:   tipo,
+		EntidadeTipo: "voucher_compra",
+		IDEntidade:   entPtr,
+		Titulo:       titulo,
+		Valor:        FormatValorBR(reg.ValorFinal),
+		Quem:         quem,
+		Meio:         strings.TrimSpace(reg.MeioPagamento),
+		Status:       strings.TrimSpace(reg.Status),
+		Codigo:       cod,
+		Extra:        extra,
+		DataHora:     time.Now().Format("02/01/2006 15:04"),
+		Payload: map[string]any{
+			"compra_id":      reg.ID,
+			"usuario_id":     reg.UsuarioID,
+			"valor_final":    reg.ValorFinal,
+			"meio_pagamento": reg.MeioPagamento,
+			"status":         reg.Status,
+		},
+	})
 }
 
 func (s *ServicoVoucherCompra) duracaoPagamentoPix(idRede string) time.Duration {
@@ -473,6 +531,7 @@ func (s *ServicoVoucherCompra) PagarComPixInicia(ctx context.Context, idRede, id
 		return nil, res, err
 	}
 	logPixVoucherCriado(idRede, reg, gw, res)
+	s.registrarEventoVoucher(modelos.EventoVoucherGerado, reg, "")
 	return reg, res, nil
 }
 
@@ -584,6 +643,7 @@ func (s *ServicoVoucherCompra) PagarComDinheiroInicia(idRede, idUsuario string, 
 		lastErr = s.repo.CriarAguardandoDinheiro(reg)
 		if lastErr == nil {
 			log.Printf("voucher_dinheiro criado: rede=%s compra=%s codigo=%s", idRede, reg.ID, cod)
+			s.registrarEventoVoucher(modelos.EventoVoucherGerado, reg, "")
 			return reg, nil
 		}
 		if !strings.Contains(strings.ToLower(lastErr.Error()), "unique") &&
@@ -1055,6 +1115,11 @@ func (s *ServicoVoucherCompra) RegistrarBaixaPorCodigoEquipe(u *modelos.UsuarioS
 		opPosto = strings.TrimSpace(*postoPtr)
 	}
 	s.enriquecerConsultaEquipe(out, opPosto)
+	regEv := out.VoucherCompraRegistro
+	if (regEv.PostoCompraID == nil || strings.TrimSpace(*regEv.PostoCompraID) == "") && postoPtr != nil {
+		regEv.PostoCompraID = postoPtr
+	}
+	s.registrarEventoVoucher(modelos.EventoVoucherBaixa, &regEv, strings.TrimSpace(u.NomeCompleto))
 	return out, nil
 }
 
@@ -1144,6 +1209,9 @@ func (s *ServicoVoucherCompra) processarAtivacaoVoucher(idRede, idCompra string)
 			}
 			s.creditarCashbackVoucher(idRede, vc)
 			go s.notificarPushVoucherAprovado(uid, idCompra, cod, vc.ValorFinal)
+			vc.Status = "ATIVO"
+			vc.CodigoResgate = &cod
+			s.registrarEventoVoucher(modelos.EventoVoucherPago, vc, "")
 			return
 		}
 		if strings.Contains(lastErr.Error(), "nenhuma linha ativada") {

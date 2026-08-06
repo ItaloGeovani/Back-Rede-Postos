@@ -175,6 +175,7 @@ func (h *Handlers) CriarCampanhaGestorRede(w http.ResponseWriter, r *http.Reques
 		return
 	}
 	h.notificarClientesPushNovaCampanha(c)
+	h.registrarEventoCampanhaCriada(c)
 	utils.ResponderJSON(w, http.StatusCreated, map[string]any{
 		"mensagem": "campanha criada com sucesso",
 		"campanha": c,
@@ -259,6 +260,7 @@ func (h *Handlers) EditarCampanhaGestorRede(w http.ResponseWriter, r *http.Reque
 	nova, errC := h.campanhaService.BuscarPorIDeRede(req.ID, idRede)
 	if errC == nil {
 		h.notificarClientesSeCampanhaAtivada(ant, nova)
+		h.registrarEventoCampanhaAtivada(ant, nova)
 	} else {
 		log.Printf("editar campanha gestor: recarregar apos gravar: %v", errC)
 	}
@@ -1017,6 +1019,11 @@ func (h *Handlers) ResumoRelatoriosGestorRede(w http.ResponseWriter, r *http.Req
 func (h *Handlers) ListarAuditoriaGestorRede(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
 		utils.ResponderErro(w, http.StatusMethodNotAllowed, "metodo nao permitido")
+		return
+	}
+	// Trilha real: eventos operacionais (voucher, campanha, etc.).
+	if h.eventosSvc != nil {
+		h.ListarEventosOperacionaisGestor(w, r)
 		return
 	}
 	idRede, ok := h.idRedeDaSessao(w, r)

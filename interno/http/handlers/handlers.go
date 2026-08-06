@@ -32,6 +32,7 @@ type Handlers struct {
 	premioResgateSvc       *servicos.ServicoPremioResgate
 	redesSociaisRepo       repositorios.RedeLinksSociaisRepositorio
 	uploadImagem           *servicos.ServicoUploadImagem
+	eventosSvc             *servicos.ServicoEventosOperacionais
 	cfg                    config.Config
 }
 
@@ -61,6 +62,7 @@ func Novos(
 	premioResgateSvc *servicos.ServicoPremioResgate,
 	redesSociaisRepo repositorios.RedeLinksSociaisRepositorio,
 	uploadImagem *servicos.ServicoUploadImagem,
+	eventosSvc *servicos.ServicoEventosOperacionais,
 	cfg config.Config,
 ) *Handlers {
 	return &Handlers{
@@ -89,6 +91,7 @@ func Novos(
 		premioResgateSvc:       premioResgateSvc,
 		redesSociaisRepo:       redesSociaisRepo,
 		uploadImagem:           uploadImagem,
+		eventosSvc:             eventosSvc,
 		cfg:                    cfg,
 	}
 }

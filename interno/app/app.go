@@ -17,6 +17,7 @@ import (
 	"gaspass-servidor/interno/http/handlers"
 	"gaspass-servidor/interno/http/middlewares"
 	"gaspass-servidor/interno/http/rotas"
+	"gaspass-servidor/interno/notificacoes"
 	"gaspass-servidor/interno/repositorios"
 	"gaspass-servidor/interno/servicos"
 	"gaspass-servidor/utils"
@@ -202,13 +203,21 @@ func Nova() (*Aplicacao, error) {
 	svcPremio := servicos.NovoServicoPremio(repoPremio, repoRede)
 	repoPremioResgate := repositorios.NovoPremioResgatePostgres(banco)
 	svcPremioResgate := servicos.NovoServicoPremioResgate(banco, repoPremio, repoPremioResgate, repoCarteira, repoRede)
+	repoEventosOp := repositorios.NovoEventosOperacionaisPostgres(banco)
+	repoWhatsApp := repositorios.NovoWhatsAppNotificacoesPostgres(banco)
+	waNotifier := &notificacoes.WhatsAppNotifier{
+		BaseURL: cfg.EvolutionGoBaseURL,
+		CfgRepo: repoWhatsApp,
+	}
+	svcEventosOp := servicos.NovoServicoEventosOperacionais(banco, repoEventosOp, repoWhatsApp, waNotifier, repoRede, repoPosto)
+	svcVoucherCompra.DefinirEventosOperacionais(svcEventosOp)
 	if err := bootstrapAdminPadrao(cfg, svcAdmin); err != nil {
 		banco.Close()
 		return nil, err
 	}
 
 	svcUploadImagem := servicos.NovoServicoUploadImagem(cfg)
-	h := handlers.Novos(autenticador, svcAdmin, svcGestor, svcRede, svcUsuarioRede, svcPosto, svcCampanha, svcPremio, repoAuditoria, estatisticasPlataforma, repoAppMobile, repoAppMobileRede, repoAppCards, repoMercadoPagoGateway, repoERedeGateway, svcVoucherCompra, svcCombustivelRede, svcIndiqueGanhe, repoCarteira, svcNiveisCliente, svcCheckinDiario, svcGireGanhe, svcPremioResgate, repoLinksSociais, svcUploadImagem, cfg)
+	h := handlers.Novos(autenticador, svcAdmin, svcGestor, svcRede, svcUsuarioRede, svcPosto, svcCampanha, svcPremio, repoAuditoria, estatisticasPlataforma, repoAppMobile, repoAppMobileRede, repoAppCards, repoMercadoPagoGateway, repoERedeGateway, svcVoucherCompra, svcCombustivelRede, svcIndiqueGanhe, repoCarteira, svcNiveisCliente, svcCheckinDiario, svcGireGanhe, svcPremioResgate, repoLinksSociais, svcUploadImagem, svcEventosOp, cfg)
 
 	muxPrincipal := http.NewServeMux()
 	mwGlobal := []middlewares.Middleware{

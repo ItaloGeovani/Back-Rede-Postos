@@ -156,6 +156,7 @@ func (s *ServicoVoucherCompra) PagarComMoedaInicia(
 			lastErr = s.repo.CriarAtivoMoedaVirtual(reg)
 			if lastErr == nil {
 				log.Printf("voucher_moeda 100%%: rede=%s compra=%s codigo=%s fiat=%.2f", idRede, reg.ID, cod, valorMoedaFiat)
+				s.registrarEventoVoucher(modelos.EventoVoucherGerado, reg, "")
 				return reg, nil, nil
 			}
 			if !strings.Contains(strings.ToLower(lastErr.Error()), "unique") &&
@@ -199,6 +200,7 @@ func (s *ServicoVoucherCompra) PagarComMoedaInicia(
 			lastErr = s.repo.CriarAguardandoDinheiro(reg)
 			if lastErr == nil {
 				log.Printf("voucher_moeda+dinheiro: rede=%s compra=%s restante=%.2f", idRede, reg.ID, restante)
+				s.registrarEventoVoucher(modelos.EventoVoucherGerado, reg, "")
 				return reg, nil, nil
 			}
 			if !strings.Contains(strings.ToLower(lastErr.Error()), "unique") &&
@@ -264,6 +266,7 @@ func (s *ServicoVoucherCompra) PagarComMoedaInicia(
 	}
 	logPixVoucherCriado(idRede, reg, gw, res)
 	log.Printf("voucher_moeda+pix: rede=%s compra=%s moeda=%.2f pix=%.2f", idRede, reg.ID, valorMoedaFiat, restante)
+	s.registrarEventoVoucher(modelos.EventoVoucherGerado, reg, "")
 	return reg, res, nil
 }
 

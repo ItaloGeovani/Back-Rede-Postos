@@ -29,6 +29,8 @@ type Config struct {
 	SessaoAPIDuracao time.Duration
 	// APIImgBBKey: chave da API ImgBB (env API_IMGBB_KEY). Só no servidor; uploads falham se vazia.
 	APIImgBBKey string
+	// EvolutionGoBaseURL: URL base Evolution Go (ex. https://corenect.pro). Vazio = WhatsApp desligado.
+	EvolutionGoBaseURL string
 }
 
 func Carregar() Config {
@@ -50,6 +52,7 @@ func Carregar() Config {
 		PublicBaseURL:          strings.TrimRight(strings.TrimSpace(utils.ObterEnv("PUBLIC_BASE_URL", "")), "/"),
 		SessaoAPIDuracao:       duracaoSessaoAPI(),
 		APIImgBBKey:            strings.TrimSpace(utils.ObterEnv("API_IMGBB_KEY", "")),
+		EvolutionGoBaseURL:     strings.TrimRight(strings.TrimSpace(utils.ObterEnv("EVOLUTION_GO_BASE_URL", "")), "/"),
 	}
 }
 

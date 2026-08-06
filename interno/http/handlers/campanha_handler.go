@@ -165,6 +165,7 @@ func (h *Handlers) CriarCampanhaRedeDev(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 	h.notificarClientesPushNovaCampanha(c)
+	h.registrarEventoCampanhaCriada(c)
 	utils.ResponderJSON(w, http.StatusCreated, map[string]any{
 		"mensagem": "campanha criada com sucesso",
 		"campanha": c,
@@ -254,6 +255,7 @@ func (h *Handlers) EditarCampanhaRedeDev(w http.ResponseWriter, r *http.Request)
 	nova, errC := h.campanhaService.BuscarPorIDeRede(req.ID, idRede)
 	if errC == nil {
 		h.notificarClientesSeCampanhaAtivada(ant, nova)
+		h.registrarEventoCampanhaAtivada(ant, nova)
 	} else {
 		log.Printf("editar campanha dev: recarregar apos gravar: %v", errC)
 	}
