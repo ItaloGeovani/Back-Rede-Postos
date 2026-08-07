@@ -173,7 +173,9 @@ func filtrarCardsPublicos(itens []*modelos.AppCardRede) []*modelos.AppCardRede {
 		if c == nil || !c.Ativo {
 			continue
 		}
-		if strings.TrimSpace(c.ImagemURL) == "" {
+		// Destaque (slot 0) exige imagem. Promoções 1–3 entram mesmo sem URL
+		// para o app mostrar padrao1/2/3 enquanto o ImgBB não carrega / não foi definido.
+		if c.Slot == 0 && strings.TrimSpace(c.ImagemURL) == "" {
 			continue
 		}
 		out = append(out, c)
