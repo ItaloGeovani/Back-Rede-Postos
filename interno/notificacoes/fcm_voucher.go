@@ -183,12 +183,28 @@ func EnviarNovaCampanhaNoApp(ctx context.Context, cred string, tokens []string, 
 				Body:  tit,
 			},
 			Data: map[string]string{
-				"tipo":         "nova_campanha_app",
-				"id_campanha":  cid,
-				"id_rede":      rid,
-				"abrir_tela":   "promocoes",
-				"titulo":       "Nova promocao",
-				"corpo":        tit,
+				"tipo":        "nova_campanha_app",
+				"id_campanha": cid,
+				"id_rede":     rid,
+				"abrir_tela":  "promocoes",
+				"titulo":      "Nova promocao",
+				"corpo":       tit,
+			},
+			Android: &messaging.AndroidConfig{
+				Priority: "high",
+				Notification: &messaging.AndroidNotification{
+					ChannelID: "lucena_plus_fcm",
+					Priority:  messaging.PriorityHigh,
+					Sound:     "default",
+				},
+			},
+			APNS: &messaging.APNSConfig{
+				Headers: map[string]string{"apns-priority": "10"},
+				Payload: &messaging.APNSPayload{
+					Aps: &messaging.Aps{
+						Sound: "default",
+					},
+				},
 			},
 		}
 		br, err := c.SendEachForMulticast(ctx, req)
@@ -199,6 +215,11 @@ func EnviarNovaCampanhaNoApp(ctx context.Context, cred string, tokens []string, 
 		sucesso += br.SuccessCount
 		if br.FailureCount > 0 {
 			log.Printf("fcm campanha: lote: falhas=%d de %d", br.FailureCount, len(batch))
+			for i, resp := range br.Responses {
+				if resp != nil && !resp.Success && resp.Error != nil && i < len(batch) {
+					log.Printf("fcm campanha: token[%d] falhou: %v", i, resp.Error)
+				}
+			}
 		}
 	}
 	log.Printf("fcm campanha: fcm concluido id_campanha=%s sucesso=%d de %d token(s) id_rede=%s", cid, sucesso, len(tokens), rid)

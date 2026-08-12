@@ -164,11 +164,12 @@ func (h *Handlers) CriarCampanhaRedeDev(w http.ResponseWriter, r *http.Request) 
 		}
 		return
 	}
-	h.notificarClientesPushNovaCampanha(c)
 	h.registrarEventoCampanhaCriada(c)
+	push := h.notificarClientesPushNovaCampanha(c)
 	utils.ResponderJSON(w, http.StatusCreated, map[string]any{
 		"mensagem": "campanha criada com sucesso",
 		"campanha": c,
+		"push":     push,
 	})
 }
 
@@ -253,14 +254,17 @@ func (h *Handlers) EditarCampanhaRedeDev(w http.ResponseWriter, r *http.Request)
 	}
 
 	nova, errC := h.campanhaService.BuscarPorIDeRede(req.ID, idRede)
+	var push ResultadoPushCampanha
 	if errC == nil {
-		h.notificarClientesSeCampanhaAtivada(ant, nova)
+		push = h.notificarClientesSeCampanhaAtivada(ant, nova)
 		h.registrarEventoCampanhaAtivada(ant, nova)
 	} else {
 		log.Printf("editar campanha dev: recarregar apos gravar: %v", errC)
+		push = ResultadoPushCampanha{Disparado: false, Motivo: "falha ao recarregar campanha apos gravar"}
 	}
 	utils.ResponderJSON(w, http.StatusOK, map[string]any{
 		"mensagem": "campanha atualizada com sucesso",
+		"push":     push,
 	})
 }
 
