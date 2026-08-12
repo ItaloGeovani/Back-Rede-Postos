@@ -1,10 +1,10 @@
 {
-  "version": "0.1.5",
-  "notes": "GasPass PDV 0.1.5",
-  "pub_date": "2026-08-12T18:31:00.689Z",
+  "version": "0.1.6",
+  "notes": "GasPass PDV 0.1.6",
+  "pub_date": "2026-08-12T18:44:30.125Z",
   "platforms": {
     "windows-x86_64": {
-      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVTVm9tTU1yV2J6czRYZEUwZ3VSTEFzUUdjS08rK2QvNjdySC9qSWtBcFdpN0dTVGxOcGFSTnpHWkl3QkViUCtsdm1iWDlkdWhwZ25sQjJzaTVmY1d5eHJ2UmhuWjlybWdrPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzg2NTU5NDYwCWZpbGU6R2FzUGFzcyBQRFZfMC4xLjVfeDY0LXNldHVwLmV4ZQp5bmFudEFYemk2NFlTdkFRUGZBelFzVmlkVVBjMjZDT0RDTWp4T3VCeHVoKzM2K1lPbXJtc1FzL0xtMnhIV1VJb0p3a09DWVFhV0tWNmNRbHBXcmRDZz09Cg==",
+      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVTVm9tTU1yV2J6c3czVU5FUE5rQWFhTmpVYjVTZG1kNGpQRVhQMEhEam1yRE5DdktlWnBvTTJmbzhlTVNQR1Uvc0I0WkJ5QitiT0dRZlZSQ2pEak90NHN5YkNiNkx1bVFvPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzg2NTYwMjY5CWZpbGU6R2FzUGFzcyBQRFZfMC4xLjZfeDY0LXNldHVwLmV4ZQowQnJoZDQ2eGhXRDVsN3pGc2xNcHFKWllYUjlnbXdBN3VCRzVSckROL0tLa0EvU3Z2dDU3RkV2N3dienhNVGRDV1ZSeWlWWHVDbmVId1VMWWVoclRBUT09Cg==",
       "url": "https://gaspassapp.com.br/releases/GasPass-PDV-Setup.exe"
     }
   },
