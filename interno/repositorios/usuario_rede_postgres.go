@@ -394,6 +394,41 @@ WHERE u.rede_id = $1::uuid
 	return out, rows.Err()
 }
 
+// RemoverTokensFCM apaga tokens da base (ex.: NotRegistered / SenderId mismatch no FCM).
+func (r *usuarioRedePostgres) RemoverTokensFCM(tokens []string) (int64, error) {
+	limpos := make([]string, 0, len(tokens))
+	seen := map[string]struct{}{}
+	for _, t := range tokens {
+		t = strings.TrimSpace(t)
+		if t == "" {
+			continue
+		}
+		if _, ok := seen[t]; ok {
+			continue
+		}
+		seen[t] = struct{}{}
+		limpos = append(limpos, t)
+	}
+	if len(limpos) == 0 {
+		return 0, nil
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	defer cancel()
+	place := make([]string, len(limpos))
+	args := make([]any, len(limpos))
+	for i, t := range limpos {
+		place[i] = fmt.Sprintf("$%d", i+1)
+		args[i] = t
+	}
+	q := `DELETE FROM usuario_fcm_tokens WHERE token IN (` + strings.Join(place, ",") + `)`
+	res, err := r.db.ExecContext(ctx, q, args...)
+	if err != nil {
+		return 0, err
+	}
+	n, _ := res.RowsAffected()
+	return n, nil
+}
+
 // DiagnosticoPushRede retorna contagens de clientes ativos vs tokens FCM registados na rede.
 func (r *usuarioRedePostgres) DiagnosticoPushRede(idRede string) (*DiagnosticoPushRedeStats, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)

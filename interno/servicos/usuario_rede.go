@@ -40,6 +40,8 @@ type ServicoUsuarioRede interface {
 	// ListarTokensFCMClientesRede tokens FCM de todos os clientes ativos da rede (push em massa).
 	ListarTokensFCMClientesRede(idRede string) ([]string, error)
 	DiagnosticoPushRede(idRede string) (*repositorios.DiagnosticoPushRedeStats, error)
+	// RemoverTokensFCM apaga tokens invalidos (NotRegistered / SenderId mismatch, etc.).
+	RemoverTokensFCM(tokens []string) (int64, error)
 	// RegistrarPresencaAppCliente heartbeat do app (cliente): atualiza ultima atividade.
 	RegistrarPresencaAppCliente(idUsuario, idRede, plataforma string) error
 	// ListarPresencaClientesRede clientes com dados cadastrais e ultimo app heartbeat (painel gestor/gerente).
@@ -108,6 +110,7 @@ type usuarioRedePostgresRepo interface {
 	UpsertFCMToken(idUsuario, token, plataforma string) error
 	ListarTokensFCMPorUsuarioID(idUsuario string) ([]string, error)
 	ListarTokensFCMPorRedeClientesAtivos(idRede string) ([]string, error)
+	RemoverTokensFCM(tokens []string) (int64, error)
 	DiagnosticoPushRede(idRede string) (*repositorios.DiagnosticoPushRedeStats, error)
 	DefinirCodigoIndicacao(idUsuario, idRede, codigo string) error
 	ObterCodigoIndicacao(idUsuario, idRede string) (string, error)
@@ -491,6 +494,10 @@ func (s *servicoUsuarioRede) ListarTokensFCMClientesRede(idRede string) ([]strin
 
 func (s *servicoUsuarioRede) DiagnosticoPushRede(idRede string) (*repositorios.DiagnosticoPushRedeStats, error) {
 	return s.repoUsuarios.DiagnosticoPushRede(strings.TrimSpace(idRede))
+}
+
+func (s *servicoUsuarioRede) RemoverTokensFCM(tokens []string) (int64, error) {
+	return s.repoUsuarios.RemoverTokensFCM(tokens)
 }
 
 func (s *servicoUsuarioRede) RegistrarPresencaAppCliente(idUsuario, idRede, plataforma string) error {

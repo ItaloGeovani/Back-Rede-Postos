@@ -61,7 +61,15 @@ func (h *Handlers) notificarClientesPushNovaCampanha(c *modelos.Campanha) Result
 			return
 		}
 		log.Printf("fcm campanha: a enviar para %d token(s) rede=%s campanha=%s", len(tokens), idRede, campanhaID)
-		notificacoes.EnviarNovaCampanhaNoApp(ctx, h.cfg.FcmCaminhoContaServico, tokens, campanhaID, titulo, idRede)
+		invalidos := notificacoes.EnviarNovaCampanhaNoApp(ctx, h.cfg.FcmCaminhoContaServico, tokens, campanhaID, titulo, idRede)
+		if len(invalidos) > 0 {
+			n, err := h.usuarioRedeService.RemoverTokensFCM(invalidos)
+			if err != nil {
+				log.Printf("fcm campanha: limpar tokens invalidos: %v", err)
+			} else {
+				log.Printf("fcm campanha: removidos %d token(s) invalidos (SenderId mismatch/NotRegistered)", n)
+			}
+		}
 	}()
 
 	return ResultadoPushCampanha{

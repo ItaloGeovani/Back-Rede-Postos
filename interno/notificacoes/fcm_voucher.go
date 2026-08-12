@@ -2,6 +2,7 @@ package notificacoes
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"log"
 	"os"
@@ -43,6 +44,55 @@ func fcmMensageria(ctx context.Context, cred string) (*messaging.Client, error) 
 	fcmClient = c
 	credPathUso = cred
 	return c, nil
+}
+
+// ProjectIDDaCredencial le so o project_id do JSON FCM_SA (sem expor chave).
+func ProjectIDDaCredencial(credPath string) string {
+	credPath = strings.TrimSpace(credPath)
+	if credPath == "" {
+		return ""
+	}
+	b, err := os.ReadFile(credPath)
+	if err != nil {
+		return ""
+	}
+	var meta struct {
+		ProjectID string `json:"project_id"`
+	}
+	if json.Unmarshal(b, &meta) != nil {
+		return ""
+	}
+	return strings.TrimSpace(meta.ProjectID)
+}
+
+func erroTokenPermanente(err error) bool {
+	if err == nil {
+		return false
+	}
+	s := strings.ToLower(err.Error())
+	return strings.Contains(s, "senderid mismatch") ||
+		strings.Contains(s, "notregistered") ||
+		strings.Contains(s, "invalidregistration") ||
+		strings.Contains(s, "registration-token-not-registered") ||
+		strings.Contains(s, "requested entity was not found") ||
+		strings.Contains(s, "mismatched-credential")
+}
+
+// TokensInvalidosDoLote devolve tokens a remover da base apos falha permanente no FCM.
+func TokensInvalidosDoLote(batch []string, br *messaging.BatchResponse) []string {
+	if br == nil || len(batch) == 0 {
+		return nil
+	}
+	var out []string
+	for i, resp := range br.Responses {
+		if i >= len(batch) || resp == nil || resp.Success || resp.Error == nil {
+			continue
+		}
+		if erroTokenPermanente(resp.Error) {
+			out = append(out, batch[i])
+		}
+	}
+	return out
 }
 
 // EnviarVoucherAprovado push quando o pagamento do voucher no Mercado Pago é aprovado.
@@ -147,21 +197,22 @@ func EnviarVoucherUsadoNoPosto(ctx context.Context, cred string, tokens []string
 }
 
 // EnviarNovaCampanhaNoApp push para clientes da rede quando o gestor cria campanha ativa no app.
-func EnviarNovaCampanhaNoApp(ctx context.Context, cred string, tokens []string, idCampanha, tituloExibicao, idRede string) {
+// Devolve tokens invalidos (para limpeza na base).
+func EnviarNovaCampanhaNoApp(ctx context.Context, cred string, tokens []string, idCampanha, tituloExibicao, idRede string) []string {
 	if cred == "" {
 		log.Printf("fcm campanha: EnviarNovaCampanhaNoApp cred vazio")
-		return
+		return nil
 	}
 	if len(tokens) == 0 {
-		return
+		return nil
 	}
 	c, err := fcmMensageria(ctx, cred)
 	if err != nil {
 		log.Printf("fcm campanha: abrir credenciais: %v", err)
-		return
+		return nil
 	}
 	if c == nil {
-		return
+		return nil
 	}
 	tit := strings.TrimSpace(tituloExibicao)
 	if tit == "" {
@@ -170,6 +221,7 @@ func EnviarNovaCampanhaNoApp(ctx context.Context, cred string, tokens []string, 
 	cid := strings.TrimSpace(idCampanha)
 	rid := strings.TrimSpace(idRede)
 	sucesso := 0
+	var invalidos []string
 	for i := 0; i < len(tokens); i += 500 {
 		j := i + 500
 		if j > len(tokens) {
@@ -210,9 +262,10 @@ func EnviarNovaCampanhaNoApp(ctx context.Context, cred string, tokens []string, 
 		br, err := c.SendEachForMulticast(ctx, req)
 		if err != nil {
 			log.Printf("fcm campanha: SendEachForMulticast: %v", err)
-			return
+			return invalidos
 		}
 		sucesso += br.SuccessCount
+		invalidos = append(invalidos, TokensInvalidosDoLote(batch, br)...)
 		if br.FailureCount > 0 {
 			log.Printf("fcm campanha: lote: falhas=%d de %d", br.FailureCount, len(batch))
 			for i, resp := range br.Responses {
@@ -222,7 +275,8 @@ func EnviarNovaCampanhaNoApp(ctx context.Context, cred string, tokens []string, 
 			}
 		}
 	}
-	log.Printf("fcm campanha: fcm concluido id_campanha=%s sucesso=%d de %d token(s) id_rede=%s", cid, sucesso, len(tokens), rid)
+	log.Printf("fcm campanha: fcm concluido id_campanha=%s sucesso=%d de %d token(s) id_rede=%s invalidos=%d", cid, sucesso, len(tokens), rid, len(invalidos))
+	return invalidos
 }
 
 // EnviarTeste notificacao simples (endpoint /v1/eu/push/fcm/teste) para validar FCM no dispositivo.
@@ -273,19 +327,24 @@ func EnviarTeste(ctx context.Context, cred string, tokens []string) (int, int, e
 }
 
 // EnviarTesteRede envia notificacao de teste a todos os clientes (tokens FCM) da rede — titulo/corpo personalizaveis.
-func EnviarTesteRede(ctx context.Context, cred string, tokens []string, idRede, titulo, corpo string) (int, int, error) {
+// O 4º retorno lista tokens permanentemente invalidos (para limpeza).
+func EnviarTesteRede(ctx context.Context, cred string, tokens []string, idRede, titulo, corpo string) (int, int, []string, error) {
 	if cred == "" {
-		return 0, 0, fmt.Errorf("credenciais fcm nao configuradas (defina FCM_SA)")
+		return 0, 0, nil, fmt.Errorf("credenciais fcm nao configuradas (defina FCM_SA)")
 	}
 	if len(tokens) == 0 {
-		return 0, 0, nil
+		log.Printf("fcm teste rede: sem tokens, nada a enviar id_rede=%s", idRede)
+		return 0, 0, nil, nil
 	}
+	projectID := ProjectIDDaCredencial(cred)
+	log.Printf("fcm teste rede: abrindo cliente FCM project_id=%s cred=%s tokens=%d id_rede=%s", projectID, cred, len(tokens), idRede)
 	c, err := fcmMensageria(ctx, cred)
 	if err != nil {
-		return 0, 0, err
+		log.Printf("fcm teste rede: falha ao abrir FCM: %v", err)
+		return 0, 0, nil, err
 	}
 	if c == nil {
-		return 0, 0, fmt.Errorf("cliente fcm nulo")
+		return 0, 0, nil, fmt.Errorf("cliente fcm nulo")
 	}
 	tit := strings.TrimSpace(titulo)
 	if tit == "" {
@@ -298,12 +357,15 @@ func EnviarTesteRede(ctx context.Context, cred string, tokens []string, idRede, 
 	rid := strings.TrimSpace(idRede)
 	ok := 0
 	fal := 0
+	var invalidos []string
+	errosAmostra := map[string]int{}
 	for i := 0; i < len(tokens); i += 500 {
 		j := i + 500
 		if j > len(tokens) {
 			j = len(tokens)
 		}
 		batch := tokens[i:j]
+		log.Printf("fcm teste rede: enviando lote %d..%d (%d tokens) titulo=%q", i, j-1, len(batch), tit)
 		req := &messaging.MulticastMessage{
 			Tokens: batch,
 			Notification: &messaging.Notification{
@@ -311,20 +373,44 @@ func EnviarTesteRede(ctx context.Context, cred string, tokens []string, idRede, 
 				Body:  corp,
 			},
 			Data: map[string]string{
-				"tipo":         "fcm_teste_painel",
-				"abrir_tela":   "modal",
-				"titulo":       tit,
-				"corpo":        corp,
-				"id_rede":      rid,
-				"origem":       "painel",
+				"tipo":       "fcm_teste_painel",
+				"abrir_tela": "modal",
+				"titulo":     tit,
+				"corpo":      corp,
+				"id_rede":    rid,
+				"origem":     "painel",
+			},
+			Android: &messaging.AndroidConfig{
+				Priority: "high",
 			},
 		}
 		br, err := c.SendEachForMulticast(ctx, req)
 		if err != nil {
-			return ok, fal, err
+			log.Printf("fcm teste rede: SendEachForMulticast erro: %v", err)
+			return ok, fal, invalidos, err
 		}
 		ok += br.SuccessCount
 		fal += br.FailureCount
+		invalidos = append(invalidos, TokensInvalidosDoLote(batch, br)...)
+		log.Printf("fcm teste rede: lote ok=%d falhas=%d", br.SuccessCount, br.FailureCount)
+		if br.FailureCount > 0 {
+			for idx, resp := range br.Responses {
+				if resp != nil && !resp.Success && resp.Error != nil && idx < len(batch) {
+					msg := resp.Error.Error()
+					errosAmostra[msg]++
+					tok := batch[idx]
+					sufixo := tok
+					if len(sufixo) > 12 {
+						sufixo = "…" + sufixo[len(sufixo)-8:]
+					}
+					log.Printf("fcm teste rede: token[%d]=%s falhou: %v", idx, sufixo, resp.Error)
+				}
+			}
+		}
 	}
-	return ok, fal, nil
+	for msg, n := range errosAmostra {
+		log.Printf("fcm teste rede: resumo erro %q → %d token(s)", msg, n)
+	}
+	log.Printf("fcm teste rede: concluido sucesso=%d falhas=%d invalidos=%d project_id=%s", ok, fal, len(invalidos), projectID)
+	return ok, fal, invalidos, nil
 }
