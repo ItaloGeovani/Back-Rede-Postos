@@ -12,6 +12,7 @@ import (
 type reqLoginPainelUnificado struct {
 	IDRede string `json:"id_rede"`
 	Email  string `json:"email"`
+	Codigo string `json:"codigo"`
 	Senha  string `json:"senha"`
 }
 
@@ -68,6 +69,33 @@ func (h *Handlers) LoginPainelUnificadoDev(w http.ResponseWriter, r *http.Reques
 		return
 	}
 	req.IDRede = strings.TrimSpace(req.IDRede)
+	req.Email = strings.TrimSpace(req.Email)
+	req.Codigo = strings.TrimSpace(req.Codigo)
+	req.Senha = strings.TrimSpace(req.Senha)
+
+	// Login por codigo de frentista (sem passar por admin/gestor).
+	if req.Codigo != "" && req.Email == "" {
+		token, sessao, err := h.usuarioRedeService.LoginPainelPorCodigo(req.Codigo, req.Senha, req.IDRede)
+		if err != nil {
+			switch {
+			case errors.Is(err, servicos.ErrDadosInvalidos):
+				utils.ResponderErro(w, http.StatusBadRequest, err.Error())
+			case errors.Is(err, servicos.ErrCodigoAcessoAmbiguo):
+				utils.ResponderErro(w, http.StatusConflict, err.Error())
+			case errors.Is(err, servicos.ErrCredenciais):
+				utils.ResponderErro(w, http.StatusUnauthorized, err.Error())
+			default:
+				utils.ResponderErro(w, http.StatusInternalServerError, "falha ao autenticar usuario")
+			}
+			return
+		}
+		utils.ResponderJSON(w, http.StatusOK, map[string]any{
+			"mensagem": "login realizado com sucesso",
+			"token":    token,
+			"sessao":   sessao,
+		})
+		return
+	}
 
 	token, sessao, err := h.adminService.Login(req.Email, req.Senha)
 	if err == nil {

@@ -24,6 +24,7 @@ type reqCriarUsuarioEquipe struct {
 	Papel          string `json:"papel"`
 	Nome           string `json:"nome"`
 	Email          string `json:"email"`
+	Codigo         string `json:"codigo"`
 	Senha          string `json:"senha"`
 	ConfirmarSenha string `json:"confirmar_senha"`
 	Telefone       string `json:"telefone"`
@@ -36,6 +37,7 @@ type reqEditarUsuarioEquipe struct {
 	Papel          string `json:"papel"`
 	Nome           string `json:"nome"`
 	Email          string `json:"email"`
+	Codigo         string `json:"codigo"`
 	Senha          string `json:"senha"`
 	ConfirmarSenha string `json:"confirmar_senha"`
 	Telefone       string `json:"telefone"`
@@ -122,6 +124,7 @@ func (h *Handlers) CriarUsuarioEquipeRedeDev(w http.ResponseWriter, r *http.Requ
 		Papel:          req.Papel,
 		Nome:           req.Nome,
 		Email:          req.Email,
+		Codigo:         req.Codigo,
 		Senha:          req.Senha,
 		ConfirmarSenha: req.ConfirmarSenha,
 		Telefone:       req.Telefone,
@@ -133,6 +136,8 @@ func (h *Handlers) CriarUsuarioEquipeRedeDev(w http.ResponseWriter, r *http.Requ
 		case errors.Is(err, repositorios.ErrRedeNaoEncontrada):
 			utils.ResponderErro(w, http.StatusNotFound, "rede nao encontrada")
 		case errors.Is(err, repositorios.ErrEmailUsuarioEquipeDuplicado):
+			utils.ResponderErro(w, http.StatusConflict, err.Error())
+		case errors.Is(err, repositorios.ErrCodigoAcessoDuplicadoNoPosto):
 			utils.ResponderErro(w, http.StatusConflict, err.Error())
 		case errors.Is(err, repositorios.ErrPostoNaoPertenceARede):
 			utils.ResponderErro(w, http.StatusBadRequest, err.Error())
@@ -167,6 +172,7 @@ func (h *Handlers) EditarUsuarioEquipeRedeDev(w http.ResponseWriter, r *http.Req
 		Papel:          req.Papel,
 		Nome:           req.Nome,
 		Email:          req.Email,
+		Codigo:         req.Codigo,
 		Senha:          req.Senha,
 		ConfirmarSenha: req.ConfirmarSenha,
 		Telefone:       req.Telefone,
@@ -181,6 +187,8 @@ func (h *Handlers) EditarUsuarioEquipeRedeDev(w http.ResponseWriter, r *http.Req
 		case errors.Is(err, repositorios.ErrUsuarioEquipeNaoEncontrado):
 			utils.ResponderErro(w, http.StatusNotFound, "usuario da equipe nao encontrado nesta rede")
 		case errors.Is(err, repositorios.ErrEmailUsuarioEquipeDuplicado):
+			utils.ResponderErro(w, http.StatusConflict, err.Error())
+		case errors.Is(err, repositorios.ErrCodigoAcessoDuplicadoNoPosto):
 			utils.ResponderErro(w, http.StatusConflict, err.Error())
 		case errors.Is(err, repositorios.ErrPostoNaoPertenceARede):
 			utils.ResponderErro(w, http.StatusBadRequest, err.Error())

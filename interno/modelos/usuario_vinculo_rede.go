@@ -8,6 +8,7 @@ type UsuarioVinculoRede struct {
 	Papel    string `json:"papel"`
 	Nome     string `json:"nome"`
 	Email    string `json:"email"`
+	Codigo   string `json:"codigo,omitempty"`
 	Telefone string `json:"telefone"`
 	Ativo    bool   `json:"ativo"`
 }

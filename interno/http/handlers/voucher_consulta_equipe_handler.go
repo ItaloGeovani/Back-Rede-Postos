@@ -51,11 +51,13 @@ func (h *Handlers) GetVoucherConsultaPorCodigoEquipe(w http.ResponseWriter, r *h
 }
 
 type bodyVoucherBaixaEquipe struct {
-	Codigo  string  `json:"codigo"`
-	IDPosto *string `json:"id_posto,omitempty"`
+	Codigo         string  `json:"codigo"`
+	IDPosto        *string `json:"id_posto,omitempty"`
+	OperadorCodigo string  `json:"operador_codigo,omitempty"`
+	OperadorSenha  string  `json:"operador_senha,omitempty"`
 }
 
-// PostVoucherBaixaEquipe POST JSON { codigo, id_posto? } — registra uso (USADO); frentista/gerente usam posto do token; gestor pode enviar id_posto.
+// PostVoucherBaixaEquipe POST JSON { codigo, id_posto?, operador_codigo?, operador_senha? } — registra uso (USADO); frentista/gerente usam posto do token; gestor pode enviar id_posto.
 func (h *Handlers) PostVoucherBaixaEquipe(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		utils.ResponderErro(w, http.StatusMethodNotAllowed, "metodo nao permitido")
@@ -75,7 +77,7 @@ func (h *Handlers) PostVoucherBaixaEquipe(w http.ResponseWriter, r *http.Request
 		utils.ResponderErro(w, http.StatusBadRequest, "corpo json invalido")
 		return
 	}
-	out, err := h.voucherCompraSvc.RegistrarBaixaPorCodigoEquipe(u, body.Codigo, body.IDPosto)
+	out, err := h.voucherCompraSvc.RegistrarBaixaPorCodigoEquipe(u, body.Codigo, body.IDPosto, body.OperadorCodigo, body.OperadorSenha)
 	if err != nil {
 		if errors.Is(err, repositorios.ErrVoucherCompraNaoEncontrado) {
 			utils.ResponderErro(w, http.StatusNotFound, "voucher nao encontrado nesta rede")
@@ -85,8 +87,14 @@ func (h *Handlers) PostVoucherBaixaEquipe(w http.ResponseWriter, r *http.Request
 			utils.ResponderErro(w, http.StatusBadRequest, err.Error())
 			return
 		}
-		if errors.Is(err, servicos.ErrVoucherEquipeSemPosto) || errors.Is(err, servicos.ErrVoucherEquipePapelBaixa) {
+		if errors.Is(err, servicos.ErrVoucherEquipeSemPosto) ||
+			errors.Is(err, servicos.ErrVoucherEquipePapelBaixa) ||
+			errors.Is(err, servicos.ErrVoucherEquipeOperadorObrigatorio) {
 			utils.ResponderErro(w, http.StatusBadRequest, err.Error())
+			return
+		}
+		if errors.Is(err, servicos.ErrVoucherEquipeOperadorInvalido) {
+			utils.ResponderErro(w, http.StatusUnauthorized, err.Error())
 			return
 		}
 		if errors.Is(err, servicos.ErrVoucherEquipeNaoAtivoUso) ||

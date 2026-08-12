@@ -234,6 +234,15 @@ func Nova() (*Aplicacao, error) {
 	rotas.RegistrarGerentePostoPainel(muxPrincipal, h, autenticador, mwGlobal...)
 	rotas.RegistrarFrentistaPainel(muxPrincipal, h, autenticador, mwGlobal...)
 
+	releasesDir := estatico.ResolverDirReleases(cfg.PastaReleases)
+	if releasesDir != "" {
+		log.Printf("releases estaticos: %s (GET /releases/)", releasesDir)
+		fs := http.StripPrefix("/releases/", http.FileServer(http.Dir(releasesDir)))
+		muxPrincipal.Handle("/releases/", middlewares.Encadear(fs, mwGlobal...))
+	} else {
+		log.Printf("releases: pasta nao encontrada (RELEASES_DIR ou ./releases)")
+	}
+
 	raizPainel := estatico.EncontrarRaizPainel(cfg.PastaPainelWeb)
 	if raizPainel != "" {
 		log.Printf("painel web estatico: %s (GET /)", raizPainel)

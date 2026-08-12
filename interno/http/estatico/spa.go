@@ -64,12 +64,12 @@ npm run build:deploy</pre>
 </body></html>`
 
 // ComSPAFallback encerra GET/HEAD nao-API com arquivos estaticos e index.html (rotas do React).
-// Rotas /saude e /v1/... seguem sempre para o handler da API.
+// Rotas /saude, /v1/... e /releases/... seguem sempre para o handler da API (mux).
 func ComSPAFallback(api http.Handler, staticRoot string) http.Handler {
 	if staticRoot == "" {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			path := r.URL.Path
-			if path == "/saude" || strings.HasPrefix(path, "/v1/") {
+			if path == "/saude" || strings.HasPrefix(path, "/v1/") || strings.HasPrefix(path, "/releases/") {
 				api.ServeHTTP(w, r)
 				return
 			}
@@ -89,7 +89,7 @@ func ComSPAFallback(api http.Handler, staticRoot string) http.Handler {
 	staticRoot = filepath.Clean(staticRoot)
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		path := r.URL.Path
-		if path == "/saude" || strings.HasPrefix(path, "/v1/") {
+		if path == "/saude" || strings.HasPrefix(path, "/v1/") || strings.HasPrefix(path, "/releases/") {
 			api.ServeHTTP(w, r)
 			return
 		}
@@ -124,4 +124,29 @@ func ComSPAFallback(api http.Handler, staticRoot string) http.Handler {
 		}
 		http.ServeFile(w, r, filepath.Join(staticRoot, "index.html"))
 	})
+}
+
+// ResolverDirReleases retorna o diretorio absoluto de artefactos do updater, ou string vazia.
+func ResolverDirReleases(override string) string {
+	candidatos := []string{}
+	if o := strings.TrimSpace(override); o != "" {
+		candidatos = append(candidatos, o)
+	}
+	candidatos = append(candidatos,
+		"releases",
+		"./releases",
+		filepath.Join("..", "releases"),
+	)
+	for _, dir := range candidatos {
+		fi, err := os.Stat(dir)
+		if err != nil || !fi.IsDir() {
+			continue
+		}
+		abs, err := filepath.Abs(dir)
+		if err != nil {
+			return dir
+		}
+		return abs
+	}
+	return ""
 }

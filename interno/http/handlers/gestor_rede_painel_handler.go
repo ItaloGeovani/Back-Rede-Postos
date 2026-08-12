@@ -49,8 +49,41 @@ func (h *Handlers) MinhaRedeGestorRede(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	utils.ResponderJSON(w, http.StatusOK, map[string]any{
-		"rede": rede,
+		"rede":          rede,
+		"rede_logo_url": h.resolveLogoURLPainelSessao(middlewares.Usuario(r.Context()), idRede),
 	})
+}
+
+// resolveLogoURLPainelSessao logo do posto do usuário logado; se não tiver posto (gestor),
+// usa a primeira logo de posto da rede. Não usa card do app.
+func (h *Handlers) resolveLogoURLPainelSessao(u *modelos.UsuarioSessao, idRede string) string {
+	idRede = strings.TrimSpace(idRede)
+	if idRede == "" || h.postoService == nil {
+		return ""
+	}
+	if u != nil {
+		idPosto := strings.TrimSpace(u.IDPosto)
+		if idPosto != "" {
+			p, err := h.postoService.BuscarPorIDNaRede(idPosto, idRede)
+			if err == nil && p != nil {
+				if logo := strings.TrimSpace(p.LogoURL); logo != "" {
+					return logo
+				}
+			}
+		}
+	}
+	postos, err := h.postoService.ListarPorRedeID(idRede)
+	if err != nil {
+		return ""
+	}
+	for _, p := range postos {
+		if p != nil {
+			if logo := strings.TrimSpace(p.LogoURL); logo != "" {
+				return logo
+			}
+		}
+	}
+	return ""
 }
 
 func (h *Handlers) ListarGestoresDaMinhaRede(w http.ResponseWriter, r *http.Request) {
@@ -800,6 +833,7 @@ func (h *Handlers) CriarUsuarioEquipeGestorRede(w http.ResponseWriter, r *http.R
 		Papel:          req.Papel,
 		Nome:           req.Nome,
 		Email:          req.Email,
+		Codigo:         req.Codigo,
 		Senha:          req.Senha,
 		ConfirmarSenha: req.ConfirmarSenha,
 		Telefone:       req.Telefone,
@@ -811,6 +845,8 @@ func (h *Handlers) CriarUsuarioEquipeGestorRede(w http.ResponseWriter, r *http.R
 		case errors.Is(err, repositorios.ErrRedeNaoEncontrada):
 			utils.ResponderErro(w, http.StatusNotFound, "rede nao encontrada")
 		case errors.Is(err, repositorios.ErrEmailUsuarioEquipeDuplicado):
+			utils.ResponderErro(w, http.StatusConflict, err.Error())
+		case errors.Is(err, repositorios.ErrCodigoAcessoDuplicadoNoPosto):
 			utils.ResponderErro(w, http.StatusConflict, err.Error())
 		case errors.Is(err, repositorios.ErrPostoNaoPertenceARede):
 			utils.ResponderErro(w, http.StatusBadRequest, err.Error())
@@ -847,6 +883,7 @@ func (h *Handlers) EditarUsuarioEquipeGestorRede(w http.ResponseWriter, r *http.
 		Papel:          req.Papel,
 		Nome:           req.Nome,
 		Email:          req.Email,
+		Codigo:         req.Codigo,
 		Senha:          req.Senha,
 		ConfirmarSenha: req.ConfirmarSenha,
 		Telefone:       req.Telefone,
@@ -861,6 +898,8 @@ func (h *Handlers) EditarUsuarioEquipeGestorRede(w http.ResponseWriter, r *http.
 		case errors.Is(err, repositorios.ErrUsuarioEquipeNaoEncontrado):
 			utils.ResponderErro(w, http.StatusNotFound, "usuario da equipe nao encontrado nesta rede")
 		case errors.Is(err, repositorios.ErrEmailUsuarioEquipeDuplicado):
+			utils.ResponderErro(w, http.StatusConflict, err.Error())
+		case errors.Is(err, repositorios.ErrCodigoAcessoDuplicadoNoPosto):
 			utils.ResponderErro(w, http.StatusConflict, err.Error())
 		case errors.Is(err, repositorios.ErrPostoNaoPertenceARede):
 			utils.ResponderErro(w, http.StatusBadRequest, err.Error())

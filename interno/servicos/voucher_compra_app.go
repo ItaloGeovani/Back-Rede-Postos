@@ -16,6 +16,7 @@ import (
 	"gaspass-servidor/interno/modelos"
 	"gaspass-servidor/interno/notificacoes"
 	"gaspass-servidor/interno/repositorios"
+	"gaspass-servidor/utils"
 
 	"github.com/google/uuid"
 )
@@ -51,11 +52,13 @@ var ErrVoucherCampanhaInvalida = errors.New("campanha invalida ou inaplicavel")
 
 // Erros da equipe ao registrar uso (baixa) do voucher no posto.
 var (
-	ErrVoucherEquipeSemPosto        = errors.New("usuario sem posto vinculado; nao e possivel registrar uso")
-	ErrVoucherEquipePapelBaixa      = errors.New("papel nao autorizado a registrar uso do voucher")
-	ErrVoucherEquipeNaoAtivoUso     = errors.New("voucher nao esta ativo para uso")
-	ErrVoucherEquipeResgateExpirado = errors.New("prazo de resgate do voucher expirou")
-	ErrVoucherEquipePostoIncorreto  = errors.New("este voucher so pode ser usado no posto onde foi comprado")
+	ErrVoucherEquipeSemPosto           = errors.New("usuario sem posto vinculado; nao e possivel registrar uso")
+	ErrVoucherEquipePapelBaixa         = errors.New("papel nao autorizado a registrar uso do voucher")
+	ErrVoucherEquipeNaoAtivoUso        = errors.New("voucher nao esta ativo para uso")
+	ErrVoucherEquipeResgateExpirado    = errors.New("prazo de resgate do voucher expirou")
+	ErrVoucherEquipePostoIncorreto     = errors.New("este voucher so pode ser usado no posto onde foi comprado")
+	ErrVoucherEquipeOperadorObrigatorio = errors.New("informe codigo ou e-mail e senha do frentista")
+	ErrVoucherEquipeOperadorInvalido   = errors.New("codigo/e-mail ou senha do frentista invalidos")
 )
 
 // ServicoVoucherCompra compra de voucher no app (PIX + campanha).
@@ -69,11 +72,52 @@ type ServicoVoucherCompra struct {
 	posto      interface {
 		BuscarPorIDNaRede(idPosto, idRede string) (*modelos.Posto, error)
 	}
-	carteira   repositorios.CarteiraRepositorio
-	fcm        repositorios.FCMListador
-	cfg        config.Config
-	indique    *ServicoIndiqueGanhe
-	eventos    *ServicoEventosOperacionais
+	carteira    repositorios.CarteiraRepositorio
+	fcm         repositorios.FCMListador
+	frentistas  repoFrentistaCodigoAcesso
+	cfg         config.Config
+	indique     *ServicoIndiqueGanhe
+	eventos     *ServicoEventosOperacionais
+}
+
+type repoFrentistaCodigoAcesso interface {
+	BuscarFrentistaAtivoPorCodigoNoPosto(idRede, idPosto, codigo string) (*repositorios.UsuarioPainelLogin, error)
+	BuscarFrentistaAtivoPorEmailNoPosto(idRede, idPosto, email string) (*repositorios.UsuarioPainelLogin, error)
+}
+
+// resolverFrentistaOperadorNoPosto aceita código de acesso ou e-mail + valida senha.
+func (s *ServicoVoucherCompra) resolverFrentistaOperadorNoPosto(
+	idRede, idPosto, login, senha string,
+) (*repositorios.UsuarioPainelLogin, error) {
+	login = strings.TrimSpace(login)
+	senha = strings.TrimSpace(senha)
+	idRede = strings.TrimSpace(idRede)
+	idPosto = strings.TrimSpace(idPosto)
+	if login == "" || senha == "" {
+		return nil, ErrVoucherEquipeOperadorObrigatorio
+	}
+	if s.frentistas == nil {
+		return nil, ErrVoucherEquipeOperadorInvalido
+	}
+	var (
+		op  *repositorios.UsuarioPainelLogin
+		err error
+	)
+	if strings.Contains(login, "@") {
+		op, err = s.frentistas.BuscarFrentistaAtivoPorEmailNoPosto(idRede, idPosto, login)
+	} else {
+		op, err = s.frentistas.BuscarFrentistaAtivoPorCodigoNoPosto(idRede, idPosto, login)
+	}
+	if err != nil {
+		if errors.Is(err, repositorios.ErrUsuarioPainelLoginNaoEncontrado) {
+			return nil, ErrVoucherEquipeOperadorInvalido
+		}
+		return nil, err
+	}
+	if !op.Ativo || op.SenhaHash != utils.GerarHashSHA256(senha) {
+		return nil, ErrVoucherEquipeOperadorInvalido
+	}
+	return op, nil
 }
 
 func NovoServicoVoucherCompra(
@@ -91,9 +135,13 @@ func NovoServicoVoucherCompra(
 	cfg config.Config,
 	ind *ServicoIndiqueGanhe,
 ) *ServicoVoucherCompra {
+	var fr repoFrentistaCodigoAcesso
+	if x, ok := fcm.(repoFrentistaCodigoAcesso); ok {
+		fr = x
+	}
 	return &ServicoVoucherCompra{
 		repo: repo, campanha: camp, mpGW: mp, eredeGW: erede, rede: rede, posto: posto,
-		carteira: carteira, combustive: comb, fcm: fcm, cfg: cfg, indique: ind,
+		carteira: carteira, combustive: comb, fcm: fcm, frentistas: fr, cfg: cfg, indique: ind,
 	}
 }
 
@@ -1036,11 +1084,20 @@ func (s *ServicoVoucherCompra) tentarSincronizarStatusPixPendente(ctx context.Co
 }
 
 // RegistrarBaixaPorCodigoEquipe marca o voucher ATIVO ou AGUARDANDO_DINHEIRO como USADO.
-func (s *ServicoVoucherCompra) RegistrarBaixaPorCodigoEquipe(u *modelos.UsuarioSessao, codigo string, idPostoOpcional *string) (*repositorios.VoucherCompraConsultaEquipe, error) {
+// Para frentista no painel web, operadorCodigo/operadorSenha identificam quem deu a baixa (PC compartilhado).
+// Se ambos vazios (ex.: app Flutter com login individual), usa o usuario da sessao.
+func (s *ServicoVoucherCompra) RegistrarBaixaPorCodigoEquipe(
+	u *modelos.UsuarioSessao,
+	codigo string,
+	idPostoOpcional *string,
+	operadorCodigo, operadorSenha string,
+) (*repositorios.VoucherCompraConsultaEquipe, error) {
 	if u == nil {
 		return nil, ErrDadosInvalidos
 	}
 	codigo = strings.TrimSpace(codigo)
+	operadorCodigo = strings.TrimSpace(operadorCodigo)
+	operadorSenha = strings.TrimSpace(operadorSenha)
 	if strings.TrimSpace(u.IDRede) == "" || strings.TrimSpace(u.IDUsuario) == "" || codigo == "" {
 		return nil, ErrDadosInvalidos
 	}
@@ -1062,6 +1119,27 @@ func (s *ServicoVoucherCompra) RegistrarBaixaPorCodigoEquipe(u *modelos.UsuarioS
 	default:
 		return nil, ErrVoucherEquipePapelBaixa
 	}
+
+	operadorID := strings.TrimSpace(u.IDUsuario)
+	operadorPapel := string(u.Papel)
+	operadorNome := strings.TrimSpace(u.NomeCompleto)
+
+	if u.Papel == modelos.PapelFrentista {
+		temOp := operadorCodigo != "" || operadorSenha != ""
+		if temOp {
+			op, err := s.resolverFrentistaOperadorNoPosto(u.IDRede, strings.TrimSpace(u.IDPosto), operadorCodigo, operadorSenha)
+			if err != nil {
+				return nil, err
+			}
+			operadorID = op.ID
+			operadorPapel = strings.TrimSpace(op.Papel)
+			if operadorPapel == "" {
+				operadorPapel = string(modelos.PapelFrentista)
+			}
+			operadorNome = strings.TrimSpace(op.Nome)
+		}
+	}
+
 	vc, err := s.repo.BuscarPorCodigoResgateConsultaEquipe(codigo, u.IDRede)
 	if err != nil {
 		return nil, err
@@ -1090,7 +1168,7 @@ func (s *ServicoVoucherCompra) RegistrarBaixaPorCodigoEquipe(u *modelos.UsuarioS
 			return nil, ErrVoucherEquipePostoIncorreto
 		}
 	}
-	if err := s.repo.RegistrarBaixaUso(vc.ID, u.IDRede, postoPtr, u.IDUsuario, string(u.Papel), strings.TrimSpace(u.NomeCompleto)); err != nil {
+	if err := s.repo.RegistrarBaixaUso(vc.ID, u.IDRede, postoPtr, operadorID, operadorPapel, operadorNome); err != nil {
 		log.Printf("voucher baixa: RegistrarBaixaUso id=%s: %v", vc.ID, err)
 		return nil, err
 	}
@@ -1147,6 +1225,81 @@ func (s *ServicoVoucherCompra) ListarPainelPorRede(idRede string, limite, offset
 		}
 	}
 	return s.repo.ListarPainelPorRede(idRede, limite, offset, status)
+}
+
+// RelatorioBaixasFrentistaResult resposta do relatório pessoal (após código+senha).
+type RelatorioBaixasFrentistaResult struct {
+	Operador map[string]string                     `json:"operador"`
+	Periodo  map[string]any                        `json:"periodo"`
+	Totais   map[string]any                        `json:"totais"`
+	Itens    []*repositorios.VoucherBaixaOperadorLinha `json:"itens"`
+}
+
+// RelatorioBaixasFrentista valida código ou e-mail + senha do frentista no posto da sessão e lista baixas dele.
+func (s *ServicoVoucherCompra) RelatorioBaixasFrentista(
+	u *modelos.UsuarioSessao,
+	operadorCodigo, operadorSenha, periodo string,
+) (*RelatorioBaixasFrentistaResult, error) {
+	if u == nil || strings.TrimSpace(u.IDRede) == "" {
+		return nil, ErrDadosInvalidos
+	}
+	if u.Papel != modelos.PapelFrentista {
+		return nil, ErrVoucherEquipePapelBaixa
+	}
+	idPosto := strings.TrimSpace(u.IDPosto)
+	if idPosto == "" {
+		return nil, ErrVoucherEquipeSemPosto
+	}
+	op, err := s.resolverFrentistaOperadorNoPosto(u.IDRede, idPosto, operadorCodigo, operadorSenha)
+	if err != nil {
+		return nil, err
+	}
+
+	periodo = strings.TrimSpace(strings.ToLower(periodo))
+	if periodo == "" {
+		periodo = "hoje"
+	}
+	loc, err := time.LoadLocation("America/Sao_Paulo")
+	if err != nil {
+		loc = time.FixedZone("BRT", -3*3600)
+	}
+	agora := time.Now().In(loc)
+	inicioDia := time.Date(agora.Year(), agora.Month(), agora.Day(), 0, 0, 0, 0, loc)
+	var inicio, fim time.Time
+	switch periodo {
+	case "7d":
+		inicio = inicioDia.AddDate(0, 0, -6)
+		fim = inicioDia.Add(24 * time.Hour)
+	case "hoje":
+		inicio = inicioDia
+		fim = inicioDia.Add(24 * time.Hour)
+	default:
+		return nil, ErrDadosInvalidos
+	}
+
+	itens, soma, err := s.repo.ListarBaixasPorOperador(u.IDRede, op.ID, inicio, fim)
+	if err != nil {
+		return nil, err
+	}
+	if itens == nil {
+		itens = []*repositorios.VoucherBaixaOperadorLinha{}
+	}
+	return &RelatorioBaixasFrentistaResult{
+		Operador: map[string]string{
+			"id":   op.ID,
+			"nome": strings.TrimSpace(op.Nome),
+		},
+		Periodo: map[string]any{
+			"chave":  periodo,
+			"inicio": inicio.Format(time.RFC3339),
+			"fim":    fim.Format(time.RFC3339),
+		},
+		Totais: map[string]any{
+			"qtd":   len(itens),
+			"valor": soma,
+		},
+		Itens: itens,
+	}, nil
 }
 
 // ProcessarPagamentoAprovadoPorReferencia ativa voucher após pagamento confirmado (MP ou e.Rede).

@@ -989,3 +989,80 @@ LIMIT $3 OFFSET $4
 	}
 	return out, total, rows.Err()
 }
+
+func (r *voucherCompraPostgres) ListarBaixasPorOperador(redeID, operadorUsuarioID string, inicio, fim time.Time) ([]*VoucherBaixaOperadorLinha, float64, error) {
+	redeID = strings.TrimSpace(redeID)
+	operadorUsuarioID = strings.TrimSpace(operadorUsuarioID)
+	if redeID == "" || operadorUsuarioID == "" {
+		return nil, 0, errors.New("rede ou operador vazio")
+	}
+	if !fim.After(inicio) {
+		return nil, 0, errors.New("intervalo de datas invalido")
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	defer cancel()
+
+	var soma float64
+	err := r.db.QueryRowContext(ctx, `
+SELECT COALESCE(SUM(v.valor_final), 0)
+FROM voucher_compras v
+WHERE v.rede_id = $1::uuid
+  AND v.status = 'USADO'
+  AND v.operador_usuario_id = $2::uuid
+  AND v.usado_em IS NOT NULL
+  AND v.usado_em >= $3
+  AND v.usado_em < $4
+`, redeID, operadorUsuarioID, inicio.UTC(), fim.UTC()).Scan(&soma)
+	if err != nil {
+		return nil, 0, err
+	}
+
+	rows, err := r.db.QueryContext(ctx, `
+SELECT
+  v.id::text,
+  COALESCE(NULLIF(TRIM(v.codigo_resgate), ''), ''),
+  v.valor_final,
+  v.usado_em,
+  COALESCE(TRIM(u.nome_completo), ''),
+  COALESCE(NULLIF(TRIM(v.meio_pagamento), ''), 'PIX')
+FROM voucher_compras v
+INNER JOIN usuarios u ON u.id = v.usuario_id AND u.rede_id = v.rede_id
+WHERE v.rede_id = $1::uuid
+  AND v.status = 'USADO'
+  AND v.operador_usuario_id = $2::uuid
+  AND v.usado_em IS NOT NULL
+  AND v.usado_em >= $3
+  AND v.usado_em < $4
+ORDER BY v.usado_em DESC
+LIMIT 500
+`, redeID, operadorUsuarioID, inicio.UTC(), fim.UTC())
+	if err != nil {
+		return nil, 0, err
+	}
+	defer rows.Close()
+
+	var out []*VoucherBaixaOperadorLinha
+	for rows.Next() {
+		var x VoucherBaixaOperadorLinha
+		var usado sql.NullTime
+		if err := rows.Scan(
+			&x.ID,
+			&x.CodigoResgate,
+			&x.ValorFinal,
+			&usado,
+			&x.ClienteNomeCompleto,
+			&x.MeioPagamento,
+		); err != nil {
+			return nil, 0, err
+		}
+		if usado.Valid {
+			t := usado.Time.UTC()
+			x.UsadoEm = &t
+		}
+		out = append(out, &x)
+	}
+	if out == nil {
+		out = []*VoucherBaixaOperadorLinha{}
+	}
+	return out, soma, rows.Err()
+}

@@ -26,6 +26,7 @@ type ServicoUsuarioRede interface {
 	EditarUsuarioEquipe(in EditarUsuarioEquipeInput) (*modelos.UsuarioVinculoRede, error)
 	LoginPainel(email, senha string) (string, *modelos.UsuarioSessao, error)
 	LoginPainelNaRede(email, senha, idRede string) (string, *modelos.UsuarioSessao, error)
+	LoginPainelPorCodigo(codigo, senha, idRede string) (string, *modelos.UsuarioSessao, error)
 	CadastrarClienteApp(in CadastroClienteAppInput) (string, *modelos.UsuarioSessao, error)
 	ExcluirContaClienteApp(idUsuario, idRede string) error
 	// EmailECPFPorUsuarioRede e-mail e CPF cadastrados (app / pagamento).
@@ -52,6 +53,7 @@ type CriarUsuarioEquipeInput struct {
 	Papel          string
 	Nome           string
 	Email          string
+	Codigo         string
 	Senha          string
 	ConfirmarSenha string
 	Telefone       string
@@ -78,6 +80,7 @@ type EditarUsuarioEquipeInput struct {
 	Papel          string
 	Nome           string
 	Email          string
+	Codigo         string
 	Senha          string
 	ConfirmarSenha string
 	Telefone       string
@@ -91,12 +94,14 @@ var papeisEquipePosto = map[string]struct{}{
 
 type usuarioRedePostgresRepo interface {
 	ListarPorRedeIDPaginado(idRede string, limite, offset int, papeisFiltro []string, idPostoFiltro string) ([]*modelos.UsuarioVinculoRede, int, error)
-	CriarUsuarioEquipe(idRede, idPosto, papel, nome, email, senhaHash, telefone string) (*modelos.UsuarioVinculoRede, error)
+	CriarUsuarioEquipe(idRede, idPosto, papel, nome, email, senhaHash, telefone, codigoAcesso string) (*modelos.UsuarioVinculoRede, error)
 	CriarClienteSelfCadastro(idRede, nome, email, senhaHash, telefone, cpf string) (*modelos.UsuarioVinculoRede, error)
 	ExcluirContaClientePorID(idUsuario, idRede string) error
-	AtualizarUsuarioEquipe(idRede, idUsuario string, nome, email, telefone string, ativo bool, papel, idPosto, senhaHashOuVazio string) (*modelos.UsuarioVinculoRede, error)
+	AtualizarUsuarioEquipe(idRede, idUsuario string, nome, email, telefone string, ativo bool, papel, idPosto, senhaHashOuVazio, codigoAcesso string) (*modelos.UsuarioVinculoRede, error)
 	BuscarPorEmailParaLoginPainel(email string) (*repositorios.UsuarioPainelLogin, error)
 	BuscarPorEmailParaLoginPainelNaRede(idRede, email string) (*repositorios.UsuarioPainelLogin, error)
+	ListarFrentistasPorCodigoAcesso(codigo, idRede string) ([]*repositorios.UsuarioPainelLogin, error)
+	BuscarFrentistaAtivoPorCodigoNoPosto(idRede, idPosto, codigo string) (*repositorios.UsuarioPainelLogin, error)
 	PostoPertenceARede(idPosto, idRede string) (bool, error)
 	EmailECPFPorUsuarioRede(idUsuario, idRede string) (email string, cpf string, err error)
 	ObterNivelCliente(idUsuario, idRede string) (string, error)
@@ -168,21 +173,29 @@ func (s *servicoUsuarioRede) CriarUsuarioEquipe(in CriarUsuarioEquipeInput) (*mo
 	in.Papel = strings.TrimSpace(in.Papel)
 	in.Nome = strings.TrimSpace(in.Nome)
 	in.Email = strings.TrimSpace(in.Email)
+	in.Codigo = strings.TrimSpace(in.Codigo)
 	in.Senha = strings.TrimSpace(in.Senha)
 	in.ConfirmarSenha = strings.TrimSpace(in.ConfirmarSenha)
 	in.Telefone = strings.TrimSpace(in.Telefone)
 
-	if in.IDRede == "" || in.IDPosto == "" || in.Nome == "" || in.Email == "" || in.Senha == "" || in.Papel == "" {
+	if in.IDRede == "" || in.IDPosto == "" || in.Nome == "" || in.Senha == "" || in.Papel == "" {
 		return nil, ErrDadosInvalidos
+	}
+	if _, ok := papeisEquipePosto[in.Papel]; !ok {
+		return nil, fmt.Errorf("%w: papel deve ser gerente_posto ou frentista", ErrDadosInvalidos)
+	}
+	if in.Papel == "frentista" {
+		if in.Codigo == "" {
+			return nil, fmt.Errorf("%w: codigo de acesso obrigatorio para frentista", ErrDadosInvalidos)
+		}
+	} else if in.Email == "" {
+		return nil, fmt.Errorf("%w: email obrigatorio para gerente de posto", ErrDadosInvalidos)
 	}
 	if in.Senha != in.ConfirmarSenha {
 		return nil, fmt.Errorf("%w: senha e confirmar_senha devem ser iguais", ErrDadosInvalidos)
 	}
 	if len(in.Senha) < 6 {
 		return nil, fmt.Errorf("%w: senha deve ter no minimo 6 caracteres", ErrDadosInvalidos)
-	}
-	if _, ok := papeisEquipePosto[in.Papel]; !ok {
-		return nil, fmt.Errorf("%w: papel deve ser gerente_posto ou frentista", ErrDadosInvalidos)
 	}
 	if _, err := s.repoRede.BuscarPorID(in.IDRede); err != nil {
 		return nil, err
@@ -195,6 +208,11 @@ func (s *servicoUsuarioRede) CriarUsuarioEquipe(in CriarUsuarioEquipeInput) (*mo
 		return nil, repositorios.ErrPostoNaoPertenceARede
 	}
 
+	codigo := ""
+	if in.Papel == "frentista" {
+		codigo = in.Codigo
+	}
+
 	return s.repoUsuarios.CriarUsuarioEquipe(
 		in.IDRede,
 		in.IDPosto,
@@ -203,6 +221,7 @@ func (s *servicoUsuarioRede) CriarUsuarioEquipe(in CriarUsuarioEquipeInput) (*mo
 		in.Email,
 		utils.GerarHashSHA256(in.Senha),
 		in.Telefone,
+		codigo,
 	)
 }
 
@@ -213,15 +232,23 @@ func (s *servicoUsuarioRede) EditarUsuarioEquipe(in EditarUsuarioEquipeInput) (*
 	in.Papel = strings.TrimSpace(in.Papel)
 	in.Nome = strings.TrimSpace(in.Nome)
 	in.Email = strings.TrimSpace(in.Email)
+	in.Codigo = strings.TrimSpace(in.Codigo)
 	in.Senha = strings.TrimSpace(in.Senha)
 	in.ConfirmarSenha = strings.TrimSpace(in.ConfirmarSenha)
 	in.Telefone = strings.TrimSpace(in.Telefone)
 
-	if in.IDRede == "" || in.IDUsuario == "" || in.IDPosto == "" || in.Nome == "" || in.Email == "" || in.Papel == "" {
+	if in.IDRede == "" || in.IDUsuario == "" || in.IDPosto == "" || in.Nome == "" || in.Papel == "" {
 		return nil, ErrDadosInvalidos
 	}
 	if _, ok := papeisEquipePosto[in.Papel]; !ok {
 		return nil, fmt.Errorf("%w: papel deve ser gerente_posto ou frentista", ErrDadosInvalidos)
+	}
+	if in.Papel == "frentista" {
+		if in.Codigo == "" {
+			return nil, fmt.Errorf("%w: codigo de acesso obrigatorio para frentista", ErrDadosInvalidos)
+		}
+	} else if in.Email == "" {
+		return nil, fmt.Errorf("%w: email obrigatorio para gerente de posto", ErrDadosInvalidos)
 	}
 	if in.Senha != "" || in.ConfirmarSenha != "" {
 		if in.Senha != in.ConfirmarSenha {
@@ -239,6 +266,10 @@ func (s *servicoUsuarioRede) EditarUsuarioEquipe(in EditarUsuarioEquipeInput) (*
 	if in.Senha != "" {
 		senhaHash = utils.GerarHashSHA256(in.Senha)
 	}
+	codigo := ""
+	if in.Papel == "frentista" {
+		codigo = in.Codigo
+	}
 	u, err := s.repoUsuarios.AtualizarUsuarioEquipe(
 		in.IDRede,
 		in.IDUsuario,
@@ -249,6 +280,7 @@ func (s *servicoUsuarioRede) EditarUsuarioEquipe(in EditarUsuarioEquipeInput) (*
 		in.Papel,
 		in.IDPosto,
 		senhaHash,
+		codigo,
 	)
 	if err != nil {
 		return nil, err
@@ -305,6 +337,56 @@ func (s *servicoUsuarioRede) LoginPainelNaRede(email, senha, idRede string) (str
 		return "", nil, ErrCredenciais
 	}
 
+	p := modelos.Papel(strings.TrimSpace(u.Papel))
+	sessao := &modelos.UsuarioSessao{
+		IDUsuario:    u.ID,
+		NomeCompleto: u.Nome,
+		IDRede:       u.IDRede,
+		IDPosto:      u.IDPosto,
+		Papel:        p,
+	}
+	token := s.auth.CriarSessao(sessao)
+	return token, sessao, nil
+}
+
+// ErrCodigoAcessoAmbiguo quando o mesmo codigo+senha bate em mais de um posto.
+var ErrCodigoAcessoAmbiguo = errors.New("codigo de acesso ambiguo em mais de um posto; use o email")
+
+// LoginPainelPorCodigo autentica frentista pelo codigo de acesso (+ senha).
+func (s *servicoUsuarioRede) LoginPainelPorCodigo(codigo, senha, idRede string) (string, *modelos.UsuarioSessao, error) {
+	codigo = strings.TrimSpace(codigo)
+	senha = strings.TrimSpace(senha)
+	idRede = strings.TrimSpace(idRede)
+	if codigo == "" || senha == "" {
+		return "", nil, ErrDadosInvalidos
+	}
+
+	lista, err := s.repoUsuarios.ListarFrentistasPorCodigoAcesso(codigo, idRede)
+	if err != nil {
+		return "", nil, err
+	}
+	if len(lista) == 0 {
+		return "", nil, ErrCredenciais
+	}
+
+	hash := utils.GerarHashSHA256(senha)
+	var matches []*repositorios.UsuarioPainelLogin
+	for _, u := range lista {
+		if u == nil || !u.Ativo {
+			continue
+		}
+		if u.SenhaHash == hash {
+			matches = append(matches, u)
+		}
+	}
+	if len(matches) == 0 {
+		return "", nil, ErrCredenciais
+	}
+	if len(matches) > 1 {
+		return "", nil, ErrCodigoAcessoAmbiguo
+	}
+
+	u := matches[0]
 	p := modelos.Papel(strings.TrimSpace(u.Papel))
 	sessao := &modelos.UsuarioSessao{
 		IDUsuario:    u.ID,

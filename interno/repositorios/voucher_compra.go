@@ -112,6 +112,16 @@ type VoucherCompraPainelLinha struct {
 	OperadorNomeSnapshot string    `json:"operador_nome_snapshot,omitempty"`
 }
 
+// VoucherBaixaOperadorLinha baixa USADO registrada por um frentista (relatório pessoal).
+type VoucherBaixaOperadorLinha struct {
+	ID                  string     `json:"id"`
+	CodigoResgate       string     `json:"codigo_resgate"`
+	ValorFinal          float64    `json:"valor_final"`
+	UsadoEm             *time.Time `json:"usado_em,omitempty"`
+	ClienteNomeCompleto string     `json:"cliente_nome_completo"`
+	MeioPagamento       string     `json:"meio_pagamento,omitempty"`
+}
+
 // VoucherCompraRepositorio persistência de compras de voucher no app.
 type VoucherCompraRepositorio interface {
 	// CriarPendenteComPix grava após criação do payment no MP (um único INSERT).
@@ -135,6 +145,8 @@ type VoucherCompraRepositorio interface {
 	RegistrarBaixaUso(idVoucher string, redeID string, idPosto *string, operadorUsuarioID, operadorPapel, operadorNome string) error
 	// ListarPainelPorRede listagem paginada para o painel; statusFiltro vazio = todos os status.
 	ListarPainelPorRede(redeID string, limite, offset int, statusFiltro string) ([]*VoucherCompraPainelLinha, int, error)
+	// ListarBaixasPorOperador baixas USADO do operador no intervalo [inicio, fim).
+	ListarBaixasPorOperador(redeID, operadorUsuarioID string, inicio, fim time.Time) ([]*VoucherBaixaOperadorLinha, float64, error)
 }
 
 var ErrVoucherBaixaNaoPermitida = errors.New("baixa nao permitida neste estado do voucher")

@@ -52,6 +52,9 @@ var papeisRedePermitidos = map[string]struct{}{
 // ErrEmailUsuarioEquipeDuplicado quando ja existe usuario com o mesmo email na rede.
 var ErrEmailUsuarioEquipeDuplicado = errors.New("email ja cadastrado nesta rede")
 
+// ErrCodigoAcessoDuplicadoNoPosto quando ja existe frentista com o mesmo codigo no posto.
+var ErrCodigoAcessoDuplicadoNoPosto = errors.New("codigo de acesso ja cadastrado neste posto")
+
 // ErrCPFJaCadastradoNaRede quando ja existe usuario com o mesmo CPF na rede.
 var ErrCPFJaCadastradoNaRede = errors.New("cpf ja cadastrado nesta rede")
 
@@ -139,7 +142,8 @@ SELECT
   COALESCE(u.posto_id::text, ''),
   u.papel::text,
   u.nome_completo,
-  u.email,
+  COALESCE(u.email, ''),
+  COALESCE(u.codigo_acesso, ''),
   COALESCE(u.telefone, ''),
   u.ativo
 ` + whereSQL + `
@@ -155,7 +159,7 @@ LIMIT ` + lim + ` OFFSET ` + off
 	var lista []*modelos.UsuarioVinculoRede
 	for rows.Next() {
 		var u modelos.UsuarioVinculoRede
-		if err := rows.Scan(&u.ID, &u.IDRede, &u.IDPosto, &u.Papel, &u.Nome, &u.Email, &u.Telefone, &u.Ativo); err != nil {
+		if err := rows.Scan(&u.ID, &u.IDRede, &u.IDPosto, &u.Papel, &u.Nome, &u.Email, &u.Codigo, &u.Telefone, &u.Ativo); err != nil {
 			return nil, 0, err
 		}
 		lista = append(lista, &u)
@@ -185,20 +189,22 @@ LIMIT 1`, idPosto, idRede).Scan(&um)
 }
 
 // CriarUsuarioEquipe insere gerente de posto ou frentista vinculado a rede e a um posto obrigatorio.
-func (r *usuarioRedePostgres) CriarUsuarioEquipe(idRede, idPosto, papel, nome, email, senhaHash, telefone string) (*modelos.UsuarioVinculoRede, error) {
+// email pode ser vazio para frentista; codigoAcesso e o codigo de login (obrigatorio para frentista no servico).
+func (r *usuarioRedePostgres) CriarUsuarioEquipe(idRede, idPosto, papel, nome, email, senhaHash, telefone, codigoAcesso string) (*modelos.UsuarioVinculoRede, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
 	const query = `
-INSERT INTO usuarios (rede_id, posto_id, papel, nome_completo, email, senha_hash, ativo, telefone)
-VALUES ($1::uuid, $2::uuid, $3::papel_usuario, $4, $5, $6, true, NULLIF($7, ''))
+INSERT INTO usuarios (rede_id, posto_id, papel, nome_completo, email, senha_hash, ativo, telefone, codigo_acesso)
+VALUES ($1::uuid, $2::uuid, $3::papel_usuario, $4, NULLIF($5, ''), $6, true, NULLIF($7, ''), NULLIF($8, ''))
 RETURNING
   id::text,
   rede_id::text,
   COALESCE(posto_id::text, ''),
   papel::text,
   nome_completo,
-  email,
+  COALESCE(email, ''),
+  COALESCE(codigo_acesso, ''),
   COALESCE(telefone, ''),
   ativo`
 
@@ -213,7 +219,8 @@ RETURNING
 		strings.TrimSpace(email),
 		senhaHash,
 		strings.TrimSpace(telefone),
-	).Scan(&u.ID, &u.IDRede, &u.IDPosto, &u.Papel, &u.Nome, &u.Email, &u.Telefone, &u.Ativo)
+		strings.TrimSpace(codigoAcesso),
+	).Scan(&u.ID, &u.IDRede, &u.IDPosto, &u.Papel, &u.Nome, &u.Email, &u.Codigo, &u.Telefone, &u.Ativo)
 	if err != nil {
 		return nil, mapearErroUsuarioEquipePostgres(err)
 	}
@@ -234,7 +241,7 @@ RETURNING
   COALESCE(posto_id::text, ''),
   papel::text,
   nome_completo,
-  email,
+  COALESCE(email, ''),
   COALESCE(telefone, ''),
   ativo`
 
@@ -438,8 +445,12 @@ func mapearErroUsuarioEquipePostgres(err error) error {
 		return err
 	}
 	if pgErr.Code == "23505" {
-		if strings.Contains(strings.ToLower(pgErr.ConstraintName), "cpf") {
+		c := strings.ToLower(pgErr.ConstraintName)
+		if strings.Contains(c, "cpf") {
 			return ErrCPFJaCadastradoNaRede
+		}
+		if strings.Contains(c, "codigo_acesso") {
+			return ErrCodigoAcessoDuplicadoNoPosto
 		}
 		return ErrEmailUsuarioEquipeDuplicado
 	}
@@ -453,6 +464,7 @@ func (r *usuarioRedePostgres) AtualizarUsuarioEquipe(
 	ativo bool,
 	papel, idPosto string,
 	senhaHashOuVazio string,
+	codigoAcesso string,
 ) (*modelos.UsuarioVinculoRede, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
@@ -465,8 +477,9 @@ func (r *usuarioRedePostgres) AtualizarUsuarioEquipe(
 	papel = strings.TrimSpace(papel)
 	idPosto = strings.TrimSpace(idPosto)
 	senhaHashOuVazio = strings.TrimSpace(senhaHashOuVazio)
+	codigoAcesso = strings.TrimSpace(codigoAcesso)
 
-	if idRede == "" || idUsuario == "" || nome == "" || email == "" || papel == "" || idPosto == "" {
+	if idRede == "" || idUsuario == "" || nome == "" || papel == "" || idPosto == "" {
 		return nil, ErrDadosInvalidosUsuarioEquipe
 	}
 
@@ -491,17 +504,20 @@ FOR UPDATE`, idUsuario, idRede).Scan(&papelAtual)
 		return nil, ErrUsuarioEquipeNaoEncontrado
 	}
 
-	var duplicado int
-	err = tx.QueryRowContext(ctx, `
+	if email != "" {
+		var duplicado int
+		err = tx.QueryRowContext(ctx, `
 SELECT COUNT(*) FROM usuarios
 WHERE rede_id = $1::uuid
+  AND email IS NOT NULL AND TRIM(email) <> ''
   AND LOWER(TRIM(email)) = LOWER(TRIM($2))
   AND id <> $3::uuid`, idRede, email, idUsuario).Scan(&duplicado)
-	if err != nil {
-		return nil, err
-	}
-	if duplicado > 0 {
-		return nil, ErrEmailUsuarioEquipeDuplicado
+		if err != nil {
+			return nil, err
+		}
+		if duplicado > 0 {
+			return nil, ErrEmailUsuarioEquipeDuplicado
+		}
 	}
 
 	ok, err := r.postoPertenceARedeTx(ctx, tx, idPosto, idRede)
@@ -515,21 +531,23 @@ WHERE rede_id = $1::uuid
 	const query = `
 UPDATE usuarios SET
   nome_completo = $2,
-  email = $3,
+  email = NULLIF($3, ''),
   telefone = NULLIF($4, ''),
   ativo = $5,
   papel = $6::papel_usuario,
   posto_id = $7::uuid,
   senha_hash = CASE WHEN $8 = '' THEN senha_hash ELSE $8 END,
+  codigo_acesso = NULLIF($9, ''),
   atualizado_em = NOW()
-WHERE id = $1::uuid AND rede_id = $9::uuid
+WHERE id = $1::uuid AND rede_id = $10::uuid
 RETURNING
   id::text,
   rede_id::text,
   COALESCE(posto_id::text, ''),
   papel::text,
   nome_completo,
-  email,
+  COALESCE(email, ''),
+  COALESCE(codigo_acesso, ''),
   COALESCE(telefone, ''),
   ativo`
 
@@ -545,8 +563,9 @@ RETURNING
 		papel,
 		idPosto,
 		senhaHashOuVazio,
+		codigoAcesso,
 		idRede,
-	).Scan(&u.ID, &u.IDRede, &u.IDPosto, &u.Papel, &u.Nome, &u.Email, &u.Telefone, &u.Ativo)
+	).Scan(&u.ID, &u.IDRede, &u.IDPosto, &u.Papel, &u.Nome, &u.Email, &u.Codigo, &u.Telefone, &u.Ativo)
 	if err != nil {
 		return nil, mapearErroUsuarioEquipePostgres(err)
 	}
@@ -644,6 +663,165 @@ LIMIT 1`
 
 	var row UsuarioPainelLogin
 	err := r.db.QueryRowContext(ctx, query, idRede, email).Scan(
+		&row.ID,
+		&row.IDRede,
+		&row.IDPosto,
+		&row.Papel,
+		&row.Nome,
+		&row.SenhaHash,
+		&row.Ativo,
+	)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, ErrUsuarioPainelLoginNaoEncontrado
+	}
+	if err != nil {
+		return nil, err
+	}
+	return &row, nil
+}
+
+// ListarFrentistasPorCodigoAcesso localiza frentistas pelo codigo de acesso (opcionalmente na rede).
+func (r *usuarioRedePostgres) ListarFrentistasPorCodigoAcesso(codigo, idRede string) ([]*UsuarioPainelLogin, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	codigo = strings.TrimSpace(codigo)
+	idRede = strings.TrimSpace(idRede)
+	if codigo == "" {
+		return nil, nil
+	}
+
+	args := []any{codigo}
+	whereRede := ""
+	if idRede != "" {
+		whereRede = " AND u.rede_id = $2::uuid"
+		args = append(args, idRede)
+	}
+
+	query := `
+SELECT
+  u.id::text,
+  u.rede_id::text,
+  COALESCE(u.posto_id::text, ''),
+  u.papel::text,
+  u.nome_completo,
+  u.senha_hash,
+  u.ativo
+FROM usuarios u
+WHERE u.papel = 'frentista'
+  AND u.codigo_acesso IS NOT NULL
+  AND TRIM(u.codigo_acesso) <> ''
+  AND LOWER(TRIM(u.codigo_acesso)) = LOWER(TRIM($1))` + whereRede + `
+ORDER BY u.ativo DESC, u.criado_em DESC`
+
+	rows, err := r.db.QueryContext(ctx, query, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var lista []*UsuarioPainelLogin
+	for rows.Next() {
+		var row UsuarioPainelLogin
+		if err := rows.Scan(
+			&row.ID,
+			&row.IDRede,
+			&row.IDPosto,
+			&row.Papel,
+			&row.Nome,
+			&row.SenhaHash,
+			&row.Ativo,
+		); err != nil {
+			return nil, err
+		}
+		lista = append(lista, &row)
+	}
+	return lista, rows.Err()
+}
+
+// BuscarFrentistaAtivoPorCodigoNoPosto localiza frentista ativo pelo codigo no mesmo posto/rede.
+func (r *usuarioRedePostgres) BuscarFrentistaAtivoPorCodigoNoPosto(idRede, idPosto, codigo string) (*UsuarioPainelLogin, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	idRede = strings.TrimSpace(idRede)
+	idPosto = strings.TrimSpace(idPosto)
+	codigo = strings.TrimSpace(codigo)
+	if idRede == "" || idPosto == "" || codigo == "" {
+		return nil, ErrUsuarioPainelLoginNaoEncontrado
+	}
+
+	const query = `
+SELECT
+  u.id::text,
+  u.rede_id::text,
+  COALESCE(u.posto_id::text, ''),
+  u.papel::text,
+  u.nome_completo,
+  u.senha_hash,
+  u.ativo
+FROM usuarios u
+WHERE u.rede_id = $1::uuid
+  AND u.posto_id = $2::uuid
+  AND u.papel = 'frentista'
+  AND u.ativo = true
+  AND u.codigo_acesso IS NOT NULL
+  AND TRIM(u.codigo_acesso) <> ''
+  AND LOWER(TRIM(u.codigo_acesso)) = LOWER(TRIM($3))
+LIMIT 1`
+
+	var row UsuarioPainelLogin
+	err := r.db.QueryRowContext(ctx, query, idRede, idPosto, codigo).Scan(
+		&row.ID,
+		&row.IDRede,
+		&row.IDPosto,
+		&row.Papel,
+		&row.Nome,
+		&row.SenhaHash,
+		&row.Ativo,
+	)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, ErrUsuarioPainelLoginNaoEncontrado
+	}
+	if err != nil {
+		return nil, err
+	}
+	return &row, nil
+}
+
+// BuscarFrentistaAtivoPorEmailNoPosto localiza frentista ativo pelo e-mail no mesmo posto/rede.
+func (r *usuarioRedePostgres) BuscarFrentistaAtivoPorEmailNoPosto(idRede, idPosto, email string) (*UsuarioPainelLogin, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	idRede = strings.TrimSpace(idRede)
+	idPosto = strings.TrimSpace(idPosto)
+	email = strings.TrimSpace(email)
+	if idRede == "" || idPosto == "" || email == "" {
+		return nil, ErrUsuarioPainelLoginNaoEncontrado
+	}
+
+	const query = `
+SELECT
+  u.id::text,
+  u.rede_id::text,
+  COALESCE(u.posto_id::text, ''),
+  u.papel::text,
+  u.nome_completo,
+  u.senha_hash,
+  u.ativo
+FROM usuarios u
+WHERE u.rede_id = $1::uuid
+  AND u.posto_id = $2::uuid
+  AND u.papel = 'frentista'
+  AND u.ativo = true
+  AND u.email IS NOT NULL
+  AND TRIM(u.email) <> ''
+  AND LOWER(TRIM(u.email)) = LOWER(TRIM($3))
+LIMIT 1`
+
+	var row UsuarioPainelLogin
+	err := r.db.QueryRowContext(ctx, query, idRede, idPosto, email).Scan(
 		&row.ID,
 		&row.IDRede,
 		&row.IDPosto,

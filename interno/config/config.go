@@ -17,6 +17,8 @@ type Config struct {
 	PortaHTTP              int
 	// PastaPainelWeb: absoluta ou relativa com index.html do painel (PAINEL_WEB_ASSETS). Vazio = auto.
 	PastaPainelWeb string
+	// PastaReleases: pasta com latest.json e artefactos do updater (RELEASES_DIR). Vazio = auto ./releases.
+	PastaReleases string
 	// PublicBaseURL: URL base pública (https://api.seudominio.com) para montar webhook Mercado Pago e notification_url do PIX.
 	PublicBaseURL         string
 	TokenPadraoAPI        string
@@ -43,6 +45,7 @@ func Carregar() Config {
 		FcmCaminhoContaServico: fcm,
 		PortaHTTP:              portaHTTP(),
 		PastaPainelWeb:         strings.TrimSpace(utils.ObterEnv("PAINEL_WEB_ASSETS", "")),
+		PastaReleases:          strings.TrimSpace(utils.ObterEnv("RELEASES_DIR", "")),
 		TokenPadraoAPI:         utils.ObterEnv("API_TOKEN_PADRAO", "dev-super-admin"),
 		AdminNomePadrao:        utils.ObterEnv("ADMIN_NOME_PADRAO", "Administrador Geral"),
 		AdminEmailPadrao:       utils.ObterEnv("ADMIN_EMAIL_PADRAO", "admin@gaspass.local"),
