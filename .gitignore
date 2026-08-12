@@ -7,3 +7,10 @@ niocard-*-firebase-adminsdk-*.json
 **/secrets/
 # .env
 .env.*
+
+# Releases PDV: versionar latest.json + GasPass-PDV-Setup.exe (deploy via git).
+# Ignorar só cópias versionadas com espaço no nome (redundantes).
+releases/GasPass PDV_*.exe
+releases/GasPass PDV_*.exe.sig
+releases/*.nsis.zip
+releases/*.nsis.zip.sig

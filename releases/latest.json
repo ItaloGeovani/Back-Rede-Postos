@@ -1,0 +1,12 @@
+{
+  "version": "0.1.4",
+  "notes": "GasPass PDV 0.1.4",
+  "pub_date": "2026-08-12T18:28:36.176Z",
+  "platforms": {
+    "windows-x86_64": {
+      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVTVm9tTU1yV2J6c3h3bytnMUlLOXd1WFJINjdtS2NlMnhtUCtvcUhVNkVMOUdtc3l4eGRDaEhnNHpYSnd4eGVkNmRhTlVsTjM2TmNaOFFaV3lLdDVXWUU3bHdvb2xXK1FNPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzg2NTU5MzE1CWZpbGU6R2FzUGFzcyBQRFZfMC4xLjRfeDY0LXNldHVwLmV4ZQpsSVMzdldPUDVwS3I0eS81allJeGlONGJ1NXdBZmlKWVJ1QmsyZDY5VXk4bWxtZDJmKzN6OFRIRXFkeFVrWDc2YTJpRGxSMTRJaXBlak1kVmdYWHJEQT09Cg==",
+      "url": "https://gaspassapp.com.br/releases/GasPass-PDV-Setup.exe"
+    }
+  },
+  "installer_url": "https://gaspassapp.com.br/releases/GasPass-PDV-Setup.exe"
+}
