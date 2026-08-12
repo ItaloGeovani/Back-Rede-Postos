@@ -20,6 +20,8 @@ type Autenticador interface {
 	ValidarToken(token string) (*modelos.UsuarioSessao, error)
 	CriarSessao(usuario *modelos.UsuarioSessao) string
 	RevogarToken(token string)
+	// RevogarSessoesPorPapel invalida tok_* do papel (ex.: cliente). idRede vazio = todas as redes.
+	RevogarSessoesPorPapel(papel modelos.Papel, idRede string) (int64, error)
 }
 
 // entradaSessao: se ate.IsZero(), a entrada em memoria nao expira (modo sem Postgres).
@@ -214,4 +216,47 @@ func (a *autenticadorToken) RevogarToken(token string) {
 	a.mu.Lock()
 	delete(a.sessoes, token)
 	a.mu.Unlock()
+}
+
+// RevogarSessoesPorPapel apaga sessões no Postgres e remove da memória as do mesmo papel/rede.
+func (a *autenticadorToken) RevogarSessoesPorPapel(papel modelos.Papel, idRede string) (int64, error) {
+	papelStr := strings.TrimSpace(string(papel))
+	if papelStr == "" {
+		return 0, errors.New("papel obrigatorio")
+	}
+	idRede = strings.TrimSpace(idRede)
+
+	var n int64
+	if a.db != nil {
+		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		defer cancel()
+		var (
+			res sql.Result
+			err error
+		)
+		if idRede == "" {
+			res, err = a.db.ExecContext(ctx, `DELETE FROM sessao_api WHERE papel = $1`, papelStr)
+		} else {
+			res, err = a.db.ExecContext(ctx, `DELETE FROM sessao_api WHERE papel = $1 AND id_rede = $2`, papelStr, idRede)
+		}
+		if err != nil {
+			return 0, err
+		}
+		n, _ = res.RowsAffected()
+	}
+
+	a.mu.Lock()
+	for tok, ent := range a.sessoes {
+		if ent.u == nil || ent.u.Papel != papel {
+			continue
+		}
+		if idRede != "" && strings.TrimSpace(ent.u.IDRede) != idRede {
+			continue
+		}
+		delete(a.sessoes, tok)
+	}
+	a.mu.Unlock()
+
+	log.Printf("sessao_api: revogadas papel=%s id_rede=%q removidas_db=%d", papelStr, idRede, n)
+	return n, nil
 }

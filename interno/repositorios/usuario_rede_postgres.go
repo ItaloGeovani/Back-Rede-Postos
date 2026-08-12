@@ -394,6 +394,36 @@ WHERE u.rede_id = $1::uuid
 	return out, rows.Err()
 }
 
+// RemoverTokensFCMClientes apaga tokens FCM de clientes (papel cliente). idRede vazio = todas as redes.
+func (r *usuarioRedePostgres) RemoverTokensFCMClientes(idRede string) (int64, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	idRede = strings.TrimSpace(idRede)
+	var (
+		res sql.Result
+		err error
+	)
+	if idRede == "" {
+		res, err = r.db.ExecContext(ctx, `
+DELETE FROM usuario_fcm_tokens t
+USING usuarios u
+WHERE t.usuario_id = u.id
+  AND u.papel = 'cliente'::papel_usuario`)
+	} else {
+		res, err = r.db.ExecContext(ctx, `
+DELETE FROM usuario_fcm_tokens t
+USING usuarios u
+WHERE t.usuario_id = u.id
+  AND u.papel = 'cliente'::papel_usuario
+  AND u.rede_id = $1::uuid`, idRede)
+	}
+	if err != nil {
+		return 0, err
+	}
+	n, _ := res.RowsAffected()
+	return n, nil
+}
+
 // RemoverTokensFCM apaga tokens da base (ex.: NotRegistered / SenderId mismatch no FCM).
 func (r *usuarioRedePostgres) RemoverTokensFCM(tokens []string) (int64, error) {
 	limpos := make([]string, 0, len(tokens))

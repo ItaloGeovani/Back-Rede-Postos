@@ -1,6 +1,7 @@
 # Inclua servidor-go/assets/ no Git apos `npm run build:deploy` em painel-web-react (ou rode scripts/prepare-painel-web.sh).
 
-# Conta de serviço Firebase (FCM no servidor) — nunca commitar.
+# FCM service account: GitHub Push Protection bloqueia commit de fcm-sa.json.
+# Copiar manualmente para o servidor (ex.: /home/application/app/fcm-sa.json).
 fcm-sa.json
 *-firebase-adminsdk-*.json
 niocard-*-firebase-adminsdk-*.json

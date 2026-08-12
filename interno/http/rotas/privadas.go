@@ -32,6 +32,7 @@ func RegistrarPrivadas(muxPrincipal *http.ServeMux, h *handlers.Handlers, aut se
 	muxPrivada.Handle("/v1/admin/redes/dev/app-versao", http.HandlerFunc(h.AppMobileVersaoRedeAdmin))
 	muxPrivada.Handle("/v1/admin/redes/dev/vouchers/listar", http.HandlerFunc(h.GetVouchersComprasPainelAdmin))
 	muxPrivada.Handle("/v1/admin/redes/dev/push/diagnostico", http.HandlerFunc(h.GetPushDiagnosticoRedeAdmin))
+	muxPrivada.Handle("/v1/admin/sessoes/revogar-clientes", http.HandlerFunc(h.PostRevogarSessoesClientesAdmin))
 	muxPrivada.Handle("/v1/admin/usuarios-rede/dev/listar", http.HandlerFunc(h.ListarUsuariosRedeDev))
 	muxPrivada.Handle("/v1/admin/usuarios-rede/dev/criar-equipe", http.HandlerFunc(h.CriarUsuarioEquipeRedeDev))
 	muxPrivada.Handle("/v1/admin/usuarios-rede/dev/editar-equipe", http.HandlerFunc(h.EditarUsuarioEquipeRedeDev))
