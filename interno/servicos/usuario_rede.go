@@ -204,6 +204,9 @@ func (s *servicoUsuarioRede) CriarUsuarioEquipe(in CriarUsuarioEquipeInput) (*mo
 		if in.Codigo == "" {
 			return nil, fmt.Errorf("%w: codigo de acesso obrigatorio para frentista", ErrDadosInvalidos)
 		}
+		if len([]rune(in.Codigo)) < 4 {
+			return nil, fmt.Errorf("%w: codigo de acesso deve ter no minimo 4 caracteres", ErrDadosInvalidos)
+		}
 	} else if in.Email == "" {
 		return nil, fmt.Errorf("%w: email obrigatorio para gerente de posto", ErrDadosInvalidos)
 	}
@@ -262,6 +265,9 @@ func (s *servicoUsuarioRede) EditarUsuarioEquipe(in EditarUsuarioEquipeInput) (*
 	if in.Papel == "frentista" {
 		if in.Codigo == "" {
 			return nil, fmt.Errorf("%w: codigo de acesso obrigatorio para frentista", ErrDadosInvalidos)
+		}
+		if len([]rune(in.Codigo)) < 4 {
+			return nil, fmt.Errorf("%w: codigo de acesso deve ter no minimo 4 caracteres", ErrDadosInvalidos)
 		}
 	} else if in.Email == "" {
 		return nil, fmt.Errorf("%w: email obrigatorio para gerente de posto", ErrDadosInvalidos)
