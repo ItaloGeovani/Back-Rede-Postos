@@ -204,9 +204,6 @@ func (s *servicoUsuarioRede) CriarUsuarioEquipe(in CriarUsuarioEquipeInput) (*mo
 		if in.Codigo == "" {
 			return nil, fmt.Errorf("%w: codigo de acesso obrigatorio para frentista", ErrDadosInvalidos)
 		}
-		if len([]rune(in.Codigo)) < 4 {
-			return nil, fmt.Errorf("%w: codigo de acesso deve ter no minimo 4 caracteres", ErrDadosInvalidos)
-		}
 	} else if in.Email == "" {
 		return nil, fmt.Errorf("%w: email obrigatorio para gerente de posto", ErrDadosInvalidos)
 	}
@@ -215,7 +212,7 @@ func (s *servicoUsuarioRede) CriarUsuarioEquipe(in CriarUsuarioEquipeInput) (*mo
 	}
 	minSenha := 6
 	if in.Papel == "frentista" {
-		minSenha = 4
+		minSenha = 2
 	}
 	if len(in.Senha) < minSenha {
 		return nil, fmt.Errorf("%w: senha deve ter no minimo %d caracteres", ErrDadosInvalidos, minSenha)
@@ -270,9 +267,6 @@ func (s *servicoUsuarioRede) EditarUsuarioEquipe(in EditarUsuarioEquipeInput) (*
 		if in.Codigo == "" {
 			return nil, fmt.Errorf("%w: codigo de acesso obrigatorio para frentista", ErrDadosInvalidos)
 		}
-		if len([]rune(in.Codigo)) < 4 {
-			return nil, fmt.Errorf("%w: codigo de acesso deve ter no minimo 4 caracteres", ErrDadosInvalidos)
-		}
 	} else if in.Email == "" {
 		return nil, fmt.Errorf("%w: email obrigatorio para gerente de posto", ErrDadosInvalidos)
 	}
@@ -282,7 +276,7 @@ func (s *servicoUsuarioRede) EditarUsuarioEquipe(in EditarUsuarioEquipeInput) (*
 		}
 		minSenha := 6
 		if in.Papel == "frentista" {
-			minSenha = 4
+			minSenha = 2
 		}
 		if len(in.Senha) < minSenha {
 			return nil, fmt.Errorf("%w: senha deve ter no minimo %d caracteres", ErrDadosInvalidos, minSenha)
