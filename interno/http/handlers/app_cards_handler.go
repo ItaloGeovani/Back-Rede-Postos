@@ -57,7 +57,7 @@ func (h *Handlers) salvarAppCardsRede(w http.ResponseWriter, r *http.Request) {
 	}
 	var req reqSalvarAppCards
 	if err := utils.DecodificarJSON(r, &req); err != nil {
-		utils.ResponderErro(w, http.StatusBadRequest, "payload invalido")
+		utils.ResponderErro(w, http.StatusBadRequest, utils.MensagemDecodeJSON(err))
 		return
 	}
 	vistos := make(map[int]bool)

@@ -31,7 +31,7 @@ func (h *Handlers) PublicCadastroClienteApp(w http.ResponseWriter, r *http.Reque
 
 	var req reqCadastroClienteApp
 	if err := utils.DecodificarJSON(r, &req); err != nil {
-		utils.ResponderErro(w, http.StatusBadRequest, "payload invalido")
+		utils.ResponderErro(w, http.StatusBadRequest, utils.MensagemDecodeJSON(err))
 		return
 	}
 
@@ -47,13 +47,13 @@ func (h *Handlers) PublicCadastroClienteApp(w http.ResponseWriter, r *http.Reque
 	if err != nil {
 		switch {
 		case errors.Is(err, servicos.ErrDadosInvalidos):
-			utils.ResponderErro(w, http.StatusBadRequest, err.Error())
+			utils.ResponderErroCliente(w, http.StatusBadRequest, err)
 		case errors.Is(err, repositorios.ErrUsuarioClienteDuplicado):
-			utils.ResponderErro(w, http.StatusConflict, "usuario ja cadastrado nesta rede")
+			utils.ResponderErro(w, http.StatusConflict, "Este usuário já está cadastrado nesta rede.")
 		case errors.Is(err, repositorios.ErrEmailUsuarioEquipeDuplicado):
-			utils.ResponderErro(w, http.StatusConflict, "usuario ja cadastrado nesta rede")
+			utils.ResponderErro(w, http.StatusConflict, "Este usuário já está cadastrado nesta rede.")
 		default:
-			utils.ResponderErro(w, http.StatusInternalServerError, "nao foi possivel concluir o cadastro")
+			utils.ResponderErro(w, http.StatusInternalServerError, "Não foi possível concluir o cadastro. Tente novamente.")
 		}
 		return
 	}
@@ -77,11 +77,11 @@ func (h *Handlers) PublicUsuarioClienteDisponivel(w http.ResponseWriter, r *http
 	if err != nil {
 		switch {
 		case errors.Is(err, servicos.ErrDadosInvalidos):
-			utils.ResponderErro(w, http.StatusBadRequest, err.Error())
+			utils.ResponderErroCliente(w, http.StatusBadRequest, err)
 		case errors.Is(err, repositorios.ErrRedeNaoEncontrada):
-			utils.ResponderErro(w, http.StatusNotFound, "rede nao encontrada")
+			utils.ResponderErro(w, http.StatusNotFound, "Rede não encontrada.")
 		default:
-			utils.ResponderErro(w, http.StatusInternalServerError, "falha ao verificar usuario")
+			utils.ResponderErro(w, http.StatusInternalServerError, "Não foi possível verificar o usuário. Tente novamente.")
 		}
 		return
 	}

@@ -452,8 +452,11 @@ func (s *servicoUsuarioRede) CadastrarClienteApp(in CadastroClienteAppInput) (st
 		return "", nil, fmt.Errorf("%w: %s", ErrDadosInvalidos, errUsuario.Error())
 	}
 
-	if in.IDRede == "" || in.Senha == "" {
-		return "", nil, ErrDadosInvalidos
+	if in.IDRede == "" {
+		return "", nil, fmt.Errorf("%w: rede nao identificada; atualize o aplicativo e tente novamente", ErrDadosInvalidos)
+	}
+	if in.Senha == "" {
+		return "", nil, fmt.Errorf("%w: informe a senha", ErrDadosInvalidos)
 	}
 	if in.Senha != in.ConfirmarSenha {
 		return "", nil, fmt.Errorf("%w: senha e confirmar_senha devem ser iguais", ErrDadosInvalidos)

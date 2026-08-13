@@ -130,7 +130,7 @@ type reqSalvarAppMobile struct {
 func (h *Handlers) salvarConfigAppMobileAdmin(w http.ResponseWriter, r *http.Request) {
 	var req reqSalvarAppMobile
 	if err := utils.DecodificarJSON(r, &req); err != nil {
-		utils.ResponderErro(w, http.StatusBadRequest, "payload invalido")
+		utils.ResponderErro(w, http.StatusBadRequest, utils.MensagemDecodeJSON(err))
 		return
 	}
 	atual, err := h.appMobileRepo.Obter()
@@ -230,7 +230,7 @@ type reqSalvarAppMobileRede struct {
 func (h *Handlers) salvarAppMobileVersaoRedeAdmin(w http.ResponseWriter, r *http.Request) {
 	var req reqSalvarAppMobileRede
 	if err := utils.DecodificarJSON(r, &req); err != nil {
-		utils.ResponderErro(w, http.StatusBadRequest, "payload invalido")
+		utils.ResponderErro(w, http.StatusBadRequest, utils.MensagemDecodeJSON(err))
 		return
 	}
 	idRede := strings.TrimSpace(req.IDRede)

@@ -68,7 +68,7 @@ func (h *Handlers) CriarCombustivelRede(w http.ResponseWriter, r *http.Request) 
 	}
 	var req reqCriarCombustivelRede
 	if err := utils.DecodificarJSON(r, &req); err != nil {
-		utils.ResponderErro(w, http.StatusBadRequest, "payload invalido")
+		utils.ResponderErro(w, http.StatusBadRequest, utils.MensagemDecodeJSON(err))
 		return
 	}
 	ativo := true
@@ -128,7 +128,7 @@ func (h *Handlers) EditarCombustivelRede(w http.ResponseWriter, r *http.Request)
 	}
 	var req reqEditarCombustivelRede
 	if err := utils.DecodificarJSON(r, &req); err != nil {
-		utils.ResponderErro(w, http.StatusBadRequest, "payload invalido")
+		utils.ResponderErro(w, http.StatusBadRequest, utils.MensagemDecodeJSON(err))
 		return
 	}
 	ativo := true

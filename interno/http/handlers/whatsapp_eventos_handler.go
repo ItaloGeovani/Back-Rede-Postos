@@ -68,7 +68,7 @@ func (h *Handlers) putWhatsAppNotificacoesGestor(w http.ResponseWriter, r *http.
 		NotifyCampanha      *bool   `json:"notify_campanha"`
 	}
 	if err := utils.DecodificarJSON(r, &req); err != nil {
-		utils.ResponderErro(w, http.StatusBadRequest, "payload invalido")
+		utils.ResponderErro(w, http.StatusBadRequest, utils.MensagemDecodeJSON(err))
 		return
 	}
 	atual, err := h.eventosSvc.BuscarConfigWhatsApp(idRede)

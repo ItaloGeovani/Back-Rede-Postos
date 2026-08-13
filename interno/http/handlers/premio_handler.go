@@ -102,7 +102,7 @@ func (h *Handlers) CriarPremioRedeDev(w http.ResponseWriter, r *http.Request) {
 	}
 	var req reqCriarPremio
 	if err := utils.DecodificarJSON(r, &req); err != nil {
-		utils.ResponderErro(w, http.StatusBadRequest, "payload invalido")
+		utils.ResponderErro(w, http.StatusBadRequest, utils.MensagemDecodeJSON(err))
 		return
 	}
 	u := middlewares.Usuario(r.Context())
@@ -153,7 +153,7 @@ func (h *Handlers) EditarPremioRedeDev(w http.ResponseWriter, r *http.Request) {
 	}
 	var req reqEditarPremio
 	if err := utils.DecodificarJSON(r, &req); err != nil {
-		utils.ResponderErro(w, http.StatusBadRequest, "payload invalido")
+		utils.ResponderErro(w, http.StatusBadRequest, utils.MensagemDecodeJSON(err))
 		return
 	}
 	vi, vf, err := parseVigenciasPremio(req.VigenciaInicio, req.VigenciaFim)

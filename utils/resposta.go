@@ -13,6 +13,11 @@ func ResponderJSON(w http.ResponseWriter, status int, payload any) {
 
 func ResponderErro(w http.ResponseWriter, status int, mensagem string) {
 	ResponderJSON(w, status, map[string]string{
-		"erro": mensagem,
+		"erro": MensagemParaClienteTexto(mensagem),
 	})
+}
+
+// ResponderErroCliente responde com mensagem já humanizada a partir de um error.
+func ResponderErroCliente(w http.ResponseWriter, status int, err error) {
+	ResponderErro(w, status, MensagemParaCliente(err))
 }

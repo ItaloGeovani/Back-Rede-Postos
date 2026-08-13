@@ -27,7 +27,7 @@ func ValidarUsuarioCliente(s string) (string, error) {
 	raw := strings.ToLower(strings.TrimSpace(s))
 	u := NormalizarUsuarioCliente(s)
 	if u != raw || !reUsuarioCliente.MatchString(u) {
-		return "", fmt.Errorf("usuario deve ter no minimo 4 caracteres, apenas letras minusculas e numeros (sem acento, espaco ou simbolos)")
+		return "", fmt.Errorf("o usuario deve ter no minimo 4 caracteres, apenas letras e numeros (sem acento, espaco ou simbolos)")
 	}
 	return u, nil
 }

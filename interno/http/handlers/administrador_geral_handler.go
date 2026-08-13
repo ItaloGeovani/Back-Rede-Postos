@@ -35,7 +35,7 @@ func (h *Handlers) CriarAdministradorGeralDev(w http.ResponseWriter, r *http.Req
 
 	var req reqCriarAdmin
 	if err := utils.DecodificarJSON(r, &req); err != nil {
-		utils.ResponderErro(w, http.StatusBadRequest, "payload invalido")
+		utils.ResponderErro(w, http.StatusBadRequest, utils.MensagemDecodeJSON(err))
 		return
 	}
 
@@ -66,7 +66,7 @@ func (h *Handlers) EditarAdministradorGeralDev(w http.ResponseWriter, r *http.Re
 
 	var req reqEditarAdmin
 	if err := utils.DecodificarJSON(r, &req); err != nil {
-		utils.ResponderErro(w, http.StatusBadRequest, "payload invalido")
+		utils.ResponderErro(w, http.StatusBadRequest, utils.MensagemDecodeJSON(err))
 		return
 	}
 
@@ -99,7 +99,7 @@ func (h *Handlers) LoginAdministradorGeralDev(w http.ResponseWriter, r *http.Req
 
 	var req reqLoginAdmin
 	if err := utils.DecodificarJSON(r, &req); err != nil {
-		utils.ResponderErro(w, http.StatusBadRequest, "payload invalido")
+		utils.ResponderErro(w, http.StatusBadRequest, utils.MensagemDecodeJSON(err))
 		return
 	}
 

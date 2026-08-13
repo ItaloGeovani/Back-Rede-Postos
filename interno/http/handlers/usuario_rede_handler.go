@@ -114,7 +114,7 @@ func (h *Handlers) CriarUsuarioEquipeRedeDev(w http.ResponseWriter, r *http.Requ
 
 	var req reqCriarUsuarioEquipe
 	if err := utils.DecodificarJSON(r, &req); err != nil {
-		utils.ResponderErro(w, http.StatusBadRequest, "payload invalido")
+		utils.ResponderErro(w, http.StatusBadRequest, utils.MensagemDecodeJSON(err))
 		return
 	}
 
@@ -161,7 +161,7 @@ func (h *Handlers) EditarUsuarioEquipeRedeDev(w http.ResponseWriter, r *http.Req
 
 	var req reqEditarUsuarioEquipe
 	if err := utils.DecodificarJSON(r, &req); err != nil {
-		utils.ResponderErro(w, http.StatusBadRequest, "payload invalido")
+		utils.ResponderErro(w, http.StatusBadRequest, utils.MensagemDecodeJSON(err))
 		return
 	}
 
@@ -214,7 +214,7 @@ func (h *Handlers) LoginUsuarioRedePainelDev(w http.ResponseWriter, r *http.Requ
 
 	var req reqLoginUsuarioPainel
 	if err := utils.DecodificarJSON(r, &req); err != nil {
-		utils.ResponderErro(w, http.StatusBadRequest, "payload invalido")
+		utils.ResponderErro(w, http.StatusBadRequest, utils.MensagemDecodeJSON(err))
 		return
 	}
 	req.IDRede = strings.TrimSpace(req.IDRede)

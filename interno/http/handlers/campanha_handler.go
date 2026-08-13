@@ -108,7 +108,7 @@ func (h *Handlers) CriarCampanhaRedeDev(w http.ResponseWriter, r *http.Request) 
 
 	var req reqCriarCampanha
 	if err := utils.DecodificarJSON(r, &req); err != nil {
-		utils.ResponderErro(w, http.StatusBadRequest, "payload invalido")
+		utils.ResponderErro(w, http.StatusBadRequest, utils.MensagemDecodeJSON(err))
 		return
 	}
 
@@ -181,7 +181,7 @@ func (h *Handlers) EditarCampanhaRedeDev(w http.ResponseWriter, r *http.Request)
 
 	var req reqEditarCampanha
 	if err := utils.DecodificarJSON(r, &req); err != nil {
-		utils.ResponderErro(w, http.StatusBadRequest, "payload invalido")
+		utils.ResponderErro(w, http.StatusBadRequest, utils.MensagemDecodeJSON(err))
 		return
 	}
 

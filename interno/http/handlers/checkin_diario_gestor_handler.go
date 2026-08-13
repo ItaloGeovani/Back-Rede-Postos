@@ -59,7 +59,7 @@ func (h *Handlers) patchCheckinDiarioConfigGestor(w http.ResponseWriter, r *http
 	}
 	var req reqCheckinDiarioConfig
 	if err := utils.DecodificarJSON(r, &req); err != nil {
-		utils.ResponderErro(w, http.StatusBadRequest, "payload invalido")
+		utils.ResponderErro(w, http.StatusBadRequest, utils.MensagemDecodeJSON(err))
 		return
 	}
 	hz := strings.TrimSpace(req.HoraAbertura)

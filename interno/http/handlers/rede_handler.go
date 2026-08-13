@@ -2,7 +2,6 @@ package handlers
 
 import (
 	"errors"
-	"fmt"
 	"net/http"
 	"strings"
 
@@ -88,7 +87,7 @@ func (h *Handlers) CriarRedeDev(w http.ResponseWriter, r *http.Request) {
 
 	var req reqCriarRede
 	if err := utils.DecodificarJSON(r, &req); err != nil {
-		utils.ResponderErro(w, http.StatusBadRequest, fmt.Sprintf("payload invalido: %v", err))
+		utils.ResponderErro(w, http.StatusBadRequest, utils.MensagemDecodeJSON(err))
 		return
 	}
 
@@ -128,7 +127,7 @@ func (h *Handlers) EditarRedeDev(w http.ResponseWriter, r *http.Request) {
 
 	var req reqEditarRede
 	if err := utils.DecodificarJSON(r, &req); err != nil {
-		utils.ResponderErro(w, http.StatusBadRequest, fmt.Sprintf("payload invalido: %v", err))
+		utils.ResponderErro(w, http.StatusBadRequest, utils.MensagemDecodeJSON(err))
 		return
 	}
 
@@ -171,7 +170,7 @@ func (h *Handlers) EditarMoedaVirtualRedeDev(w http.ResponseWriter, r *http.Requ
 
 	var req reqEditarMoedaVirtualRede
 	if err := utils.DecodificarJSON(r, &req); err != nil {
-		utils.ResponderErro(w, http.StatusBadRequest, fmt.Sprintf("payload invalido: %v", err))
+		utils.ResponderErro(w, http.StatusBadRequest, utils.MensagemDecodeJSON(err))
 		return
 	}
 
@@ -207,7 +206,7 @@ func (h *Handlers) EditarVoucherConfigRedeDev(w http.ResponseWriter, r *http.Req
 	}
 	var req reqEditarVoucherConfigRede
 	if err := utils.DecodificarJSON(r, &req); err != nil {
-		utils.ResponderErro(w, http.StatusBadRequest, fmt.Sprintf("payload invalido: %v", err))
+		utils.ResponderErro(w, http.StatusBadRequest, utils.MensagemDecodeJSON(err))
 		return
 	}
 	if strings.TrimSpace(req.ID) == "" {
@@ -244,7 +243,7 @@ func (h *Handlers) EditarAppModulosRedeDev(w http.ResponseWriter, r *http.Reques
 	}
 	var req reqEditarAppModulosRede
 	if err := utils.DecodificarJSON(r, &req); err != nil {
-		utils.ResponderErro(w, http.StatusBadRequest, fmt.Sprintf("payload invalido: %v", err))
+		utils.ResponderErro(w, http.StatusBadRequest, utils.MensagemDecodeJSON(err))
 		return
 	}
 	if strings.TrimSpace(req.ID) == "" {
@@ -291,7 +290,7 @@ func (h *Handlers) mudarStatusRedeDev(w http.ResponseWriter, r *http.Request, at
 
 	var req reqMudarStatusRede
 	if err := utils.DecodificarJSON(r, &req); err != nil {
-		utils.ResponderErro(w, http.StatusBadRequest, fmt.Sprintf("payload invalido: %v", err))
+		utils.ResponderErro(w, http.StatusBadRequest, utils.MensagemDecodeJSON(err))
 		return
 	}
 

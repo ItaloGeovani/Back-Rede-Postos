@@ -88,7 +88,7 @@ func (h *Handlers) patchGireGanheConfigGestor(w http.ResponseWriter, r *http.Req
 	}
 	var req reqGireGanheConfig
 	if err := utils.DecodificarJSON(r, &req); err != nil {
-		utils.ResponderErro(w, http.StatusBadRequest, "payload invalido")
+		utils.ResponderErro(w, http.StatusBadRequest, utils.MensagemDecodeJSON(err))
 		return
 	}
 	tz := strings.TrimSpace(req.Timezone)

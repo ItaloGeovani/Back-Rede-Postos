@@ -59,7 +59,7 @@ func (h *Handlers) redesSociaisGestorPatch(w http.ResponseWriter, r *http.Reques
 	}
 	var req reqSalvarRedesSociais
 	if err := utils.DecodificarJSON(r, &req); err != nil {
-		utils.ResponderErro(w, http.StatusBadRequest, "payload invalido")
+		utils.ResponderErro(w, http.StatusBadRequest, utils.MensagemDecodeJSON(err))
 		return
 	}
 	if len(req.Links) > 20 {

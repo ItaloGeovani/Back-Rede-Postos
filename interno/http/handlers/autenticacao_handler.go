@@ -68,7 +68,7 @@ func (h *Handlers) LoginPainelUnificadoDev(w http.ResponseWriter, r *http.Reques
 
 	var req reqLoginPainelUnificado
 	if err := utils.DecodificarJSON(r, &req); err != nil {
-		utils.ResponderErro(w, http.StatusBadRequest, "payload invalido")
+		utils.ResponderErro(w, http.StatusBadRequest, utils.MensagemDecodeJSON(err))
 		return
 	}
 	req.IDRede = strings.TrimSpace(req.IDRede)
@@ -162,7 +162,7 @@ func (h *Handlers) LoginPainelUnificadoDev(w http.ResponseWriter, r *http.Reques
 	}
 
 	if identificadorCliente == "" {
-		utils.ResponderErro(w, http.StatusBadRequest, servicos.ErrDadosInvalidos.Error())
+		utils.ResponderErro(w, http.StatusBadRequest, "Informe o usuário ou e-mail.")
 		return
 	}
 

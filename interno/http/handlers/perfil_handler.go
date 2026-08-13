@@ -79,7 +79,7 @@ func (h *Handlers) patchPerfilEmailCpf(w http.ResponseWriter, r *http.Request) {
 	}
 	var body patchPerfilBody
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
-		utils.ResponderErro(w, http.StatusBadRequest, "json invalido")
+		utils.ResponderErro(w, http.StatusBadRequest, utils.MensagemDecodeJSON(err))
 		return
 	}
 	err := h.usuarioRedeService.AtualizarEmailCpfClienteApp(
@@ -91,15 +91,15 @@ func (h *Handlers) patchPerfilEmailCpf(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		switch {
 		case errors.Is(err, servicos.ErrDadosInvalidos):
-			utils.ResponderErro(w, http.StatusBadRequest, err.Error())
+			utils.ResponderErroCliente(w, http.StatusBadRequest, err)
 		case errors.Is(err, repositorios.ErrEmailUsuarioEquipeDuplicado):
-			utils.ResponderErro(w, http.StatusConflict, "este e-mail ja esta em uso nesta rede")
+			utils.ResponderErro(w, http.StatusConflict, "Este e-mail já está em uso nesta rede.")
 		case errors.Is(err, repositorios.ErrCPFJaCadastradoNaRede):
-			utils.ResponderErro(w, http.StatusConflict, "este CPF ja esta em uso nesta rede")
+			utils.ResponderErro(w, http.StatusConflict, "Este CPF já está em uso nesta rede.")
 		case errors.Is(err, repositorios.ErrContaClienteExclusaoNaoAplicada):
-			utils.ResponderErro(w, http.StatusNotFound, "conta nao encontrada")
+			utils.ResponderErro(w, http.StatusNotFound, "Conta não encontrada.")
 		default:
-			utils.ResponderErro(w, http.StatusInternalServerError, "falha ao salvar perfil")
+			utils.ResponderErro(w, http.StatusInternalServerError, "Não foi possível salvar o perfil. Tente novamente.")
 		}
 		return
 	}

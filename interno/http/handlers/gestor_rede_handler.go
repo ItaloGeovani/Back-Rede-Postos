@@ -59,7 +59,7 @@ func (h *Handlers) CriarGestorRedeComPlanoDev(w http.ResponseWriter, r *http.Req
 
 	var req reqCriarGestorComPlano
 	if err := utils.DecodificarJSON(r, &req); err != nil {
-		utils.ResponderErro(w, http.StatusBadRequest, "payload invalido")
+		utils.ResponderErro(w, http.StatusBadRequest, utils.MensagemDecodeJSON(err))
 		return
 	}
 
@@ -106,7 +106,7 @@ func (h *Handlers) EditarGestorRedeComPlanoDev(w http.ResponseWriter, r *http.Re
 
 	var req reqEditarGestorComPlano
 	if err := utils.DecodificarJSON(r, &req); err != nil {
-		utils.ResponderErro(w, http.StatusBadRequest, "payload invalido")
+		utils.ResponderErro(w, http.StatusBadRequest, utils.MensagemDecodeJSON(err))
 		return
 	}
 
@@ -158,7 +158,7 @@ func (h *Handlers) LoginGestorRedeDev(w http.ResponseWriter, r *http.Request) {
 
 	var req reqLoginGestorRede
 	if err := utils.DecodificarJSON(r, &req); err != nil {
-		utils.ResponderErro(w, http.StatusBadRequest, "payload invalido")
+		utils.ResponderErro(w, http.StatusBadRequest, utils.MensagemDecodeJSON(err))
 		return
 	}
 

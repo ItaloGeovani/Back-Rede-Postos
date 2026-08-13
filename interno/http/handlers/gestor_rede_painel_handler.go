@@ -154,7 +154,7 @@ func (h *Handlers) CriarCampanhaGestorRede(w http.ResponseWriter, r *http.Reques
 	}
 	var req reqCriarCampanha
 	if err := utils.DecodificarJSON(r, &req); err != nil {
-		utils.ResponderErro(w, http.StatusBadRequest, "payload invalido")
+		utils.ResponderErro(w, http.StatusBadRequest, utils.MensagemDecodeJSON(err))
 		return
 	}
 	req.IDRede = idRede
@@ -228,7 +228,7 @@ func (h *Handlers) EditarCampanhaGestorRede(w http.ResponseWriter, r *http.Reque
 	}
 	var req reqEditarCampanha
 	if err := utils.DecodificarJSON(r, &req); err != nil {
-		utils.ResponderErro(w, http.StatusBadRequest, "payload invalido")
+		utils.ResponderErro(w, http.StatusBadRequest, utils.MensagemDecodeJSON(err))
 		return
 	}
 	req.IDRede = idRede
@@ -346,7 +346,7 @@ func (h *Handlers) CriarPostoGestorRede(w http.ResponseWriter, r *http.Request) 
 	}
 	var req reqCriarPosto
 	if err := utils.DecodificarJSON(r, &req); err != nil {
-		utils.ResponderErro(w, http.StatusBadRequest, "payload invalido")
+		utils.ResponderErro(w, http.StatusBadRequest, utils.MensagemDecodeJSON(err))
 		return
 	}
 	req.IDRede = idRede
@@ -399,7 +399,7 @@ func (h *Handlers) EditarPostoGestorRede(w http.ResponseWriter, r *http.Request)
 	}
 	var req reqEditarPosto
 	if err := utils.DecodificarJSON(r, &req); err != nil {
-		utils.ResponderErro(w, http.StatusBadRequest, "payload invalido")
+		utils.ResponderErro(w, http.StatusBadRequest, utils.MensagemDecodeJSON(err))
 		return
 	}
 	req.IDRede = idRede
@@ -470,7 +470,7 @@ func (h *Handlers) EditarMeiosPostoGestorRede(w http.ResponseWriter, r *http.Req
 		} `json:"gateway_meios_habilitados"`
 	}
 	if err := utils.DecodificarJSON(r, &body); err != nil {
-		utils.ResponderErro(w, http.StatusBadRequest, "payload invalido")
+		utils.ResponderErro(w, http.StatusBadRequest, utils.MensagemDecodeJSON(err))
 		return
 	}
 	idPosto := strings.TrimSpace(body.IDPosto)
@@ -554,7 +554,7 @@ func (h *Handlers) CriarPremioGestorRede(w http.ResponseWriter, r *http.Request)
 	}
 	var req reqCriarPremio
 	if err := utils.DecodificarJSON(r, &req); err != nil {
-		utils.ResponderErro(w, http.StatusBadRequest, "payload invalido")
+		utils.ResponderErro(w, http.StatusBadRequest, utils.MensagemDecodeJSON(err))
 		return
 	}
 	req.IDRede = idRede
@@ -605,7 +605,7 @@ func (h *Handlers) EditarPremioGestorRede(w http.ResponseWriter, r *http.Request
 	}
 	var req reqEditarPremio
 	if err := utils.DecodificarJSON(r, &req); err != nil {
-		utils.ResponderErro(w, http.StatusBadRequest, "payload invalido")
+		utils.ResponderErro(w, http.StatusBadRequest, utils.MensagemDecodeJSON(err))
 		return
 	}
 	req.IDRede = idRede
@@ -658,7 +658,7 @@ func (h *Handlers) EditarMoedaVirtualMinhaRedeGestor(w http.ResponseWriter, r *h
 	}
 	var req reqEditarMoedaVirtualRede
 	if err := utils.DecodificarJSON(r, &req); err != nil {
-		utils.ResponderErro(w, http.StatusBadRequest, "payload invalido")
+		utils.ResponderErro(w, http.StatusBadRequest, utils.MensagemDecodeJSON(err))
 		return
 	}
 	req.ID = idRede
@@ -697,7 +697,7 @@ func (h *Handlers) EditarVoucherConfigMinhaRedeGestor(w http.ResponseWriter, r *
 	}
 	var req reqEditarVoucherConfigRede
 	if err := utils.DecodificarJSON(r, &req); err != nil {
-		utils.ResponderErro(w, http.StatusBadRequest, "payload invalido")
+		utils.ResponderErro(w, http.StatusBadRequest, utils.MensagemDecodeJSON(err))
 		return
 	}
 	rede, err := h.redeService.EditarVoucherConfig(servicos.EditarVoucherConfigRedeInput{
@@ -734,7 +734,7 @@ func (h *Handlers) EditarAppModulosMinhaRedeGestor(w http.ResponseWriter, r *htt
 	}
 	var req reqEditarAppModulosRede
 	if err := utils.DecodificarJSON(r, &req); err != nil {
-		utils.ResponderErro(w, http.StatusBadRequest, "payload invalido")
+		utils.ResponderErro(w, http.StatusBadRequest, utils.MensagemDecodeJSON(err))
 		return
 	}
 	rede, err := h.redeService.EditarAppModulos(servicos.EditarAppModulosRedeInput{
@@ -830,7 +830,7 @@ func (h *Handlers) CriarUsuarioEquipeGestorRede(w http.ResponseWriter, r *http.R
 	}
 	var req reqCriarUsuarioEquipe
 	if err := utils.DecodificarJSON(r, &req); err != nil {
-		utils.ResponderErro(w, http.StatusBadRequest, "payload invalido")
+		utils.ResponderErro(w, http.StatusBadRequest, utils.MensagemDecodeJSON(err))
 		return
 	}
 	req.IDRede = idRede
@@ -879,7 +879,7 @@ func (h *Handlers) EditarUsuarioEquipeGestorRede(w http.ResponseWriter, r *http.
 	}
 	var req reqEditarUsuarioEquipe
 	if err := utils.DecodificarJSON(r, &req); err != nil {
-		utils.ResponderErro(w, http.StatusBadRequest, "payload invalido")
+		utils.ResponderErro(w, http.StatusBadRequest, utils.MensagemDecodeJSON(err))
 		return
 	}
 	req.IDRede = idRede
@@ -1164,7 +1164,7 @@ func (h *Handlers) patchIndiqueGanheConfigGestor(w http.ResponseWriter, r *http.
 	}
 	var req reqIndiqueGanheConfig
 	if err := utils.DecodificarJSON(r, &req); err != nil {
-		utils.ResponderErro(w, http.StatusBadRequest, "payload invalido")
+		utils.ResponderErro(w, http.StatusBadRequest, utils.MensagemDecodeJSON(err))
 		return
 	}
 	if err := h.indiqueGanhe.SalvarConfigIndique(idRede, req.Regra, req.MoedasPremioReferente, req.MoedasPremioIndicado); err != nil {
