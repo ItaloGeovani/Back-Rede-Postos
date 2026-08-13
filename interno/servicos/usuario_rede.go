@@ -213,8 +213,12 @@ func (s *servicoUsuarioRede) CriarUsuarioEquipe(in CriarUsuarioEquipeInput) (*mo
 	if in.Senha != in.ConfirmarSenha {
 		return nil, fmt.Errorf("%w: senha e confirmar_senha devem ser iguais", ErrDadosInvalidos)
 	}
-	if len(in.Senha) < 6 {
-		return nil, fmt.Errorf("%w: senha deve ter no minimo 6 caracteres", ErrDadosInvalidos)
+	minSenha := 6
+	if in.Papel == "frentista" {
+		minSenha = 4
+	}
+	if len(in.Senha) < minSenha {
+		return nil, fmt.Errorf("%w: senha deve ter no minimo %d caracteres", ErrDadosInvalidos, minSenha)
 	}
 	if _, err := s.repoRede.BuscarPorID(in.IDRede); err != nil {
 		return nil, err
@@ -276,8 +280,12 @@ func (s *servicoUsuarioRede) EditarUsuarioEquipe(in EditarUsuarioEquipeInput) (*
 		if in.Senha != in.ConfirmarSenha {
 			return nil, fmt.Errorf("%w: senha e confirmar_senha devem ser iguais", ErrDadosInvalidos)
 		}
-		if len(in.Senha) < 6 {
-			return nil, fmt.Errorf("%w: senha deve ter no minimo 6 caracteres", ErrDadosInvalidos)
+		minSenha := 6
+		if in.Papel == "frentista" {
+			minSenha = 4
+		}
+		if len(in.Senha) < minSenha {
+			return nil, fmt.Errorf("%w: senha deve ter no minimo %d caracteres", ErrDadosInvalidos, minSenha)
 		}
 	}
 	if _, err := s.repoRede.BuscarPorID(in.IDRede); err != nil {
