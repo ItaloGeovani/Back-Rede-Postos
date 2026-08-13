@@ -48,9 +48,10 @@ type EditarRedeInput struct {
 }
 
 type EditarMoedaVirtualRedeInput struct {
-	ID                  string
-	MoedaVirtualNome    string
-	MoedaVirtualCotacao float64
+	ID                     string
+	MoedaVirtualNome       string
+	MoedaVirtualCotacao    float64
+	MoedaVirtualExpiraDias int // 0 = sem expiração; 1–365 = dias por crédito
 }
 
 // EditarVoucherConfigRedeInput prazos de voucher (app cliente). Campos nulos mantêm o valor atual.
@@ -172,9 +173,13 @@ func (s *servicoRede) EditarMoedaVirtual(input EditarMoedaVirtualRedeInput) (*mo
 	if input.MoedaVirtualCotacao <= 0 || math.IsNaN(input.MoedaVirtualCotacao) || math.IsInf(input.MoedaVirtualCotacao, 0) {
 		return nil, ErrDadosInvalidos
 	}
+	if input.MoedaVirtualExpiraDias < 0 || input.MoedaVirtualExpiraDias > 365 {
+		return nil, ErrDadosInvalidos
+	}
 	return s.repo.Atualizar(input.ID, func(r *modelos.Rede) error {
 		r.MoedaVirtualNome = input.MoedaVirtualNome
 		r.MoedaVirtualCotacao = input.MoedaVirtualCotacao
+		r.MoedaVirtualExpiraDias = input.MoedaVirtualExpiraDias
 		return nil
 	})
 }

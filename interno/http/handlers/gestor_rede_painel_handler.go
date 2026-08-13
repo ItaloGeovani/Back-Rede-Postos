@@ -663,14 +663,15 @@ func (h *Handlers) EditarMoedaVirtualMinhaRedeGestor(w http.ResponseWriter, r *h
 	}
 	req.ID = idRede
 	rede, err := h.redeService.EditarMoedaVirtual(servicos.EditarMoedaVirtualRedeInput{
-		ID:                  req.ID,
-		MoedaVirtualNome:    req.MoedaVirtualNome,
-		MoedaVirtualCotacao: req.MoedaVirtualCotacao,
+		ID:                     req.ID,
+		MoedaVirtualNome:       req.MoedaVirtualNome,
+		MoedaVirtualCotacao:    req.MoedaVirtualCotacao,
+		MoedaVirtualExpiraDias: req.MoedaVirtualExpiraDias,
 	})
 	if err != nil {
 		switch {
 		case errors.Is(err, servicos.ErrDadosInvalidos):
-			utils.ResponderErro(w, http.StatusBadRequest, "informe nome da moeda e cotacao maior que zero")
+			utils.ResponderErro(w, http.StatusBadRequest, "informe nome da moeda, cotacao > 0 e expira_dias entre 0 e 365")
 		case errors.Is(err, repositorios.ErrRedeNaoEncontrada):
 			utils.ResponderErro(w, http.StatusNotFound, err.Error())
 		default:

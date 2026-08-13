@@ -20,6 +20,8 @@ type Rede struct {
 	DiaCobranca         int       `json:"dia_cobranca"`
 	MoedaVirtualNome    string    `json:"moeda_virtual_nome"`
 	MoedaVirtualCotacao float64   `json:"moeda_virtual_cotacao"`
+	// MoedaVirtualExpiraDias: 0 = sem expiração; >0 = dias para cada crédito novo.
+	MoedaVirtualExpiraDias int `json:"moeda_virtual_expira_dias"`
 	// VoucherDiasValidadeResgate dias para usar o saldo no posto após o PIX aprovado.
 	VoucherDiasValidadeResgate int `json:"voucher_dias_validade_resgate"`
 	// VoucherMinutosExpiraPagamentoPix tempo para pagar a cobrança PIX antes de expirar.

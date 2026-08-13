@@ -5,15 +5,17 @@ import (
 	"net/http"
 	"strings"
 
+	"gaspass-servidor/interno/modelos"
 	"gaspass-servidor/interno/servicos"
 	"gaspass-servidor/utils"
 )
 
 type reqLoginPainelUnificado struct {
-	IDRede string `json:"id_rede"`
-	Email  string `json:"email"`
-	Codigo string `json:"codigo"`
-	Senha  string `json:"senha"`
+	IDRede  string `json:"id_rede"`
+	Email   string `json:"email"`
+	Usuario string `json:"usuario"`
+	Codigo  string `json:"codigo"`
+	Senha   string `json:"senha"`
 }
 
 func (h *Handlers) Login(w http.ResponseWriter, r *http.Request) {
@@ -56,7 +58,8 @@ func (h *Handlers) Login(w http.ResponseWriter, r *http.Request) {
 
 // LoginPainelUnificadoDev tenta, na ordem: administrador geral, gestor da rede, equipe/cliente no painel.
 // Corpo tipico: apenas email e senha; rede e posto vêm do registro encontrado no banco.
-// id_rede no JSON e opcional: quando informado, restringe equipe/cliente àquela rede (mesmo email em varias redes).
+// id_rede no JSON e opcional para equipe (gerente/frentista). Para papel cliente e obrigatorio:
+// sem id_rede o login de cliente e rejeitado (evita conta de uma rede entrar noutro white-label).
 func (h *Handlers) LoginPainelUnificadoDev(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		utils.ResponderErro(w, http.StatusMethodNotAllowed, "metodo nao permitido")
@@ -70,8 +73,14 @@ func (h *Handlers) LoginPainelUnificadoDev(w http.ResponseWriter, r *http.Reques
 	}
 	req.IDRede = strings.TrimSpace(req.IDRede)
 	req.Email = strings.TrimSpace(req.Email)
+	req.Usuario = strings.TrimSpace(req.Usuario)
 	req.Codigo = strings.TrimSpace(req.Codigo)
 	req.Senha = strings.TrimSpace(req.Senha)
+
+	identificadorCliente := req.Email
+	if req.Usuario != "" {
+		identificadorCliente = req.Usuario
+	}
 
 	// Login por codigo de frentista (sem passar por admin/gestor).
 	if req.Codigo != "" && req.Email == "" {
@@ -97,59 +106,70 @@ func (h *Handlers) LoginPainelUnificadoDev(w http.ResponseWriter, r *http.Reques
 		return
 	}
 
-	token, sessao, err := h.adminService.Login(req.Email, req.Senha)
-	if err == nil {
-		utils.ResponderJSON(w, http.StatusOK, map[string]any{
-			"mensagem": "login de administrador realizado com sucesso",
-			"token":    token,
-			"sessao":   sessao,
-		})
-		return
-	}
-	if !errors.Is(err, servicos.ErrCredenciais) {
-		switch {
-		case errors.Is(err, servicos.ErrDadosInvalidos):
-			utils.ResponderErro(w, http.StatusBadRequest, err.Error())
-		default:
-			utils.ResponderErro(w, http.StatusInternalServerError, "falha ao autenticar administrador")
-		}
-		return
-	}
+	var token string
+	var sessao *modelos.UsuarioSessao
+	var err error
 
-	token, sessao, err = h.gestorService.Login(req.Email, req.Senha)
-	if err == nil {
-		utils.ResponderJSON(w, http.StatusOK, map[string]any{
-			"mensagem": "login de gestor da rede realizado com sucesso",
-			"token":    token,
-			"sessao":   sessao,
-		})
-		return
-	}
-	if !errors.Is(err, servicos.ErrCredenciais) {
-		switch {
-		case errors.Is(err, servicos.ErrDadosInvalidos):
-			utils.ResponderErro(w, http.StatusBadRequest, err.Error())
-		default:
+	// Admin/gestor so com e-mail. Login so por usuario (cliente) pula esta etapa.
+	if req.Email != "" {
+		token, sessao, err = h.adminService.Login(req.Email, req.Senha)
+		if err == nil {
+			utils.ResponderJSON(w, http.StatusOK, map[string]any{
+				"mensagem": "login de administrador realizado com sucesso",
+				"token":    token,
+				"sessao":   sessao,
+			})
+			return
+		}
+		if !errors.Is(err, servicos.ErrCredenciais) {
+			switch {
+			case errors.Is(err, servicos.ErrDadosInvalidos):
+				utils.ResponderErro(w, http.StatusBadRequest, err.Error())
+			default:
+				utils.ResponderErro(w, http.StatusInternalServerError, "falha ao autenticar administrador")
+			}
+			return
+		}
+
+		token, sessao, err = h.gestorService.Login(req.Email, req.Senha)
+		if err == nil {
+			utils.ResponderJSON(w, http.StatusOK, map[string]any{
+				"mensagem": "login de gestor da rede realizado com sucesso",
+				"token":    token,
+				"sessao":   sessao,
+			})
+			return
+		}
+		if !errors.Is(err, servicos.ErrCredenciais) {
+			switch {
+			case errors.Is(err, servicos.ErrDadosInvalidos):
+				utils.ResponderErro(w, http.StatusBadRequest, err.Error())
+			default:
+				utils.ResponderErro(w, http.StatusInternalServerError, "falha ao autenticar gestor da rede")
+			}
+			return
+		}
+
+		existeGestor, errGestor := h.gestorService.ExisteGestorPorEmail(req.Email)
+		if errGestor != nil {
 			utils.ResponderErro(w, http.StatusInternalServerError, "falha ao autenticar gestor da rede")
+			return
 		}
-		return
+		if existeGestor {
+			utils.ResponderErro(w, http.StatusUnauthorized, servicos.ErrCredenciais.Error())
+			return
+		}
 	}
 
-	// Email cadastrado como gestor, mas senha inativa/incorreta: não tentar equipe/cliente.
-	existeGestor, errGestor := h.gestorService.ExisteGestorPorEmail(req.Email)
-	if errGestor != nil {
-		utils.ResponderErro(w, http.StatusInternalServerError, "falha ao autenticar gestor da rede")
-		return
-	}
-	if existeGestor {
-		utils.ResponderErro(w, http.StatusUnauthorized, servicos.ErrCredenciais.Error())
+	if identificadorCliente == "" {
+		utils.ResponderErro(w, http.StatusBadRequest, servicos.ErrDadosInvalidos.Error())
 		return
 	}
 
 	if req.IDRede == "" {
 		token, sessao, err = h.usuarioRedeService.LoginPainel(req.Email, req.Senha)
 	} else {
-		token, sessao, err = h.usuarioRedeService.LoginPainelNaRede(req.Email, req.Senha, req.IDRede)
+		token, sessao, err = h.usuarioRedeService.LoginPainelNaRede(identificadorCliente, req.Senha, req.IDRede)
 	}
 	if err != nil {
 		switch {

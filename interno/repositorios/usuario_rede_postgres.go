@@ -49,6 +49,9 @@ var papeisRedePermitidos = map[string]struct{}{
 	"cliente":       {},
 }
 
+// ErrUsuarioClienteDuplicado quando ja existe cliente com o mesmo usuario (nome) na rede.
+var ErrUsuarioClienteDuplicado = errors.New("usuario ja cadastrado nesta rede")
+
 // ErrEmailUsuarioEquipeDuplicado quando ja existe usuario com o mesmo email na rede.
 var ErrEmailUsuarioEquipeDuplicado = errors.New("email ja cadastrado nesta rede")
 
@@ -234,7 +237,7 @@ func (r *usuarioRedePostgres) CriarClienteSelfCadastro(idRede, nome, email, senh
 
 	const query = `
 INSERT INTO usuarios (rede_id, posto_id, papel, nome_completo, email, senha_hash, ativo, telefone, cpf)
-VALUES ($1::uuid, NULL, 'cliente'::papel_usuario, $2, $3, $4, true, NULLIF($5, ''), NULLIF($6, ''))
+VALUES ($1::uuid, NULL, 'cliente'::papel_usuario, $2, NULLIF($3, ''), $4, true, NULLIF($5, ''), NULLIF($6, ''))
 RETURNING
   id::text,
   rede_id::text,
@@ -517,6 +520,9 @@ func mapearErroUsuarioEquipePostgres(err error) error {
 		if strings.Contains(c, "codigo_acesso") {
 			return ErrCodigoAcessoDuplicadoNoPosto
 		}
+		if strings.Contains(c, "cliente_usuario") || strings.Contains(c, "usuario_unico") {
+			return ErrUsuarioClienteDuplicado
+		}
 		return ErrEmailUsuarioEquipeDuplicado
 	}
 	return err
@@ -654,7 +660,8 @@ type UsuarioPainelLogin struct {
 	Ativo     bool
 }
 
-// BuscarPorEmailParaLoginPainel localiza um usuario pelo email (papeis de posto ou cliente).
+// BuscarPorEmailParaLoginPainel localiza gerente/frentista pelo email (painel web, sem id_rede).
+// Cliente do app nao entra aqui — exige LoginPainelNaRede com id_rede.
 // Se existir o mesmo email em varias redes, usa o registro mais recente ativo.
 func (r *usuarioRedePostgres) BuscarPorEmailParaLoginPainel(email string) (*UsuarioPainelLogin, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
@@ -675,7 +682,7 @@ SELECT
   u.senha_hash,
   u.ativo
 FROM usuarios u
-WHERE u.papel IN ('gerente_posto', 'frentista', 'cliente')
+WHERE u.papel IN ('gerente_posto', 'frentista')
   AND LOWER(TRIM(u.email)) = LOWER(TRIM($1))
 ORDER BY u.ativo DESC, u.criado_em DESC
 LIMIT 1`
@@ -728,6 +735,52 @@ LIMIT 1`
 
 	var row UsuarioPainelLogin
 	err := r.db.QueryRowContext(ctx, query, idRede, email).Scan(
+		&row.ID,
+		&row.IDRede,
+		&row.IDPosto,
+		&row.Papel,
+		&row.Nome,
+		&row.SenhaHash,
+		&row.Ativo,
+	)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, ErrUsuarioPainelLoginNaoEncontrado
+	}
+	if err != nil {
+		return nil, err
+	}
+	return &row, nil
+}
+
+// BuscarPorUsuarioClienteNaRede localiza cliente pelo usuario (nome_completo) na rede.
+func (r *usuarioRedePostgres) BuscarPorUsuarioClienteNaRede(idRede, usuario string) (*UsuarioPainelLogin, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	idRede = strings.TrimSpace(idRede)
+	usuario = utils.NormalizarUsuarioCliente(usuario)
+	if idRede == "" || usuario == "" {
+		return nil, ErrUsuarioPainelLoginNaoEncontrado
+	}
+
+	const query = `
+SELECT
+  u.id::text,
+  u.rede_id::text,
+  COALESCE(u.posto_id::text, ''),
+  u.papel::text,
+  u.nome_completo,
+  u.senha_hash,
+  u.ativo
+FROM usuarios u
+WHERE u.rede_id = $1::uuid
+  AND u.papel = 'cliente'::papel_usuario
+  AND LOWER(TRIM(u.nome_completo)) = $2
+ORDER BY u.ativo DESC, u.criado_em DESC
+LIMIT 1`
+
+	var row UsuarioPainelLogin
+	err := r.db.QueryRowContext(ctx, query, idRede, usuario).Scan(
 		&row.ID,
 		&row.IDRede,
 		&row.IDPosto,
@@ -928,6 +981,36 @@ WHERE u.id = $1::uuid AND u.rede_id = $2::uuid`
 	email = strings.TrimSpace(email)
 	cpf = strings.TrimSpace(cpf)
 	return email, cpf, nil
+}
+
+// AtualizarEmailCpfClienteApp atualiza e-mail e CPF do cliente na rede (PIX / perfil).
+func (r *usuarioRedePostgres) AtualizarEmailCpfClienteApp(idUsuario, idRede, email, cpf string) error {
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	idUsuario = strings.TrimSpace(idUsuario)
+	idRede = strings.TrimSpace(idRede)
+	email = strings.ToLower(strings.TrimSpace(email))
+	cpf = utils.SomenteDigitosCPF(cpf)
+	if idUsuario == "" || idRede == "" || email == "" || cpf == "" {
+		return ErrDadosInvalidosUsuarioEquipe
+	}
+	const q = `
+UPDATE usuarios
+SET email = $3,
+    cpf = $4,
+    atualizado_em = NOW()
+WHERE id = $1::uuid
+  AND rede_id = $2::uuid
+  AND papel = 'cliente'::papel_usuario`
+	res, err := r.db.ExecContext(ctx, q, idUsuario, idRede, email, cpf)
+	if err != nil {
+		return mapearErroUsuarioEquipePostgres(err)
+	}
+	n, _ := res.RowsAffected()
+	if n == 0 {
+		return ErrContaClienteExclusaoNaoAplicada
+	}
+	return nil
 }
 
 // DefinirCodigoIndicacao grava o codigo unico (cliente) na rede; falha se duplicar.

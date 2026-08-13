@@ -40,9 +40,10 @@ type reqMudarStatusRede struct {
 }
 
 type reqEditarMoedaVirtualRede struct {
-	ID                  string  `json:"id"`
-	MoedaVirtualNome    string  `json:"moeda_virtual_nome"`
-	MoedaVirtualCotacao float64 `json:"moeda_virtual_cotacao"`
+	ID                     string  `json:"id"`
+	MoedaVirtualNome       string  `json:"moeda_virtual_nome"`
+	MoedaVirtualCotacao    float64 `json:"moeda_virtual_cotacao"`
+	MoedaVirtualExpiraDias int     `json:"moeda_virtual_expira_dias"`
 }
 
 // reqEditarVoucherConfigRede PATCH gestor: sem id (usa a rede da sessao). Super-admin: informe id da rede.
@@ -175,14 +176,15 @@ func (h *Handlers) EditarMoedaVirtualRedeDev(w http.ResponseWriter, r *http.Requ
 	}
 
 	rede, err := h.redeService.EditarMoedaVirtual(servicos.EditarMoedaVirtualRedeInput{
-		ID:                  req.ID,
-		MoedaVirtualNome:    req.MoedaVirtualNome,
-		MoedaVirtualCotacao: req.MoedaVirtualCotacao,
+		ID:                     req.ID,
+		MoedaVirtualNome:       req.MoedaVirtualNome,
+		MoedaVirtualCotacao:    req.MoedaVirtualCotacao,
+		MoedaVirtualExpiraDias: req.MoedaVirtualExpiraDias,
 	})
 	if err != nil {
 		switch {
 		case errors.Is(err, servicos.ErrDadosInvalidos):
-			utils.ResponderErro(w, http.StatusBadRequest, "informe id, nome da moeda e cotacao maior que zero")
+			utils.ResponderErro(w, http.StatusBadRequest, "informe id, nome da moeda, cotacao > 0 e expira_dias entre 0 e 365")
 		case errors.Is(err, repositorios.ErrRedeNaoEncontrada):
 			utils.ResponderErro(w, http.StatusNotFound, err.Error())
 		default:

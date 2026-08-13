@@ -25,12 +25,17 @@ type ServicoUsuarioRede interface {
 	CriarUsuarioEquipe(in CriarUsuarioEquipeInput) (*modelos.UsuarioVinculoRede, error)
 	EditarUsuarioEquipe(in EditarUsuarioEquipeInput) (*modelos.UsuarioVinculoRede, error)
 	LoginPainel(email, senha string) (string, *modelos.UsuarioSessao, error)
-	LoginPainelNaRede(email, senha, idRede string) (string, *modelos.UsuarioSessao, error)
+	// LoginPainelNaRede autentica na rede: e-mail (legado) ou usuario (a-z0-9) para cliente.
+	LoginPainelNaRede(identificador, senha, idRede string) (string, *modelos.UsuarioSessao, error)
 	LoginPainelPorCodigo(codigo, senha, idRede string) (string, *modelos.UsuarioSessao, error)
 	CadastrarClienteApp(in CadastroClienteAppInput) (string, *modelos.UsuarioSessao, error)
+	// UsuarioClienteDisponivel true se o usuario pode ser cadastrado na rede.
+	UsuarioClienteDisponivel(idRede, usuario string) (bool, error)
 	ExcluirContaClienteApp(idUsuario, idRede string) error
 	// EmailECPFPorUsuarioRede e-mail e CPF cadastrados (app / pagamento).
 	EmailECPFPorUsuarioRede(idUsuario, idRede string) (email string, cpf string, err error)
+	// AtualizarEmailCpfClienteApp grava e-mail/CPF no perfil do cliente (PIX).
+	AtualizarEmailCpfClienteApp(idUsuario, idRede, email, cpf string) error
 	// ObterNivelCliente codigo do nivel (ex. bronze) para multiplicador de moeda no app.
 	ObterNivelCliente(idUsuario, idRede string) (string, error)
 	// RegistrarTokenFCM grava o token do Firebase Cloud Messaging (push) para o utilizador.
@@ -64,15 +69,17 @@ type CriarUsuarioEquipeInput struct {
 }
 
 // CadastroClienteAppInput cadastro público de cliente final (app mobile) na rede.
+// Novos cadastros usam Usuario (a-z0-9); e-mail/CPF nao sao aceitos neste fluxo.
 type CadastroClienteAppInput struct {
-	IDRede         string
-	NomeCompleto   string
-	Email          string
-	Senha          string
+	IDRede string
+	// Usuario login/display (gravado em nome_completo). Preferir sobre NomeCompleto.
+	Usuario      string
+	NomeCompleto string // alias legado; se Usuario vazio, tenta validar NomeCompleto como usuario
+	Email        string // ignorado nos novos cadastros
+	Senha        string
 	ConfirmarSenha string
 	Telefone       string
 	CPF            string
-	// CodigoIndicacao opcional: codigo de outro cliente (indique e ganhe).
 	CodigoIndicacao string
 }
 
@@ -104,10 +111,13 @@ type usuarioRedePostgresRepo interface {
 	AtualizarUsuarioEquipe(idRede, idUsuario string, nome, email, telefone string, ativo bool, papel, idPosto, senhaHashOuVazio, codigoAcesso string) (*modelos.UsuarioVinculoRede, error)
 	BuscarPorEmailParaLoginPainel(email string) (*repositorios.UsuarioPainelLogin, error)
 	BuscarPorEmailParaLoginPainelNaRede(idRede, email string) (*repositorios.UsuarioPainelLogin, error)
+	BuscarPorUsuarioClienteNaRede(idRede, usuario string) (*repositorios.UsuarioPainelLogin, error)
 	ListarFrentistasPorCodigoAcesso(codigo, idRede string) ([]*repositorios.UsuarioPainelLogin, error)
 	BuscarFrentistaAtivoPorCodigoNoPosto(idRede, idPosto, codigo string) (*repositorios.UsuarioPainelLogin, error)
 	PostoPertenceARede(idPosto, idRede string) (bool, error)
 	EmailECPFPorUsuarioRede(idUsuario, idRede string) (email string, cpf string, err error)
+	// AtualizarEmailCpfClienteApp grava e-mail e CPF do cliente (PIX / perfil).
+	AtualizarEmailCpfClienteApp(idUsuario, idRede, email, cpf string) error
 	ObterNivelCliente(idUsuario, idRede string) (string, error)
 	UpsertFCMToken(idUsuario, token, plataforma string) error
 	ListarTokensFCMPorUsuarioID(idUsuario string) ([]string, error)
@@ -313,6 +323,12 @@ func (s *servicoUsuarioRede) LoginPainel(email, senha string) (string, *modelos.
 	}
 
 	p := modelos.Papel(strings.TrimSpace(u.Papel))
+	// Cliente do app exige id_rede (LoginPainelNaRede). Sem rede, o mesmo e-mail
+	// poderia autenticar em qualquer white-label via fallback global.
+	if p == modelos.PapelCliente {
+		return "", nil, ErrCredenciais
+	}
+
 	sessao := &modelos.UsuarioSessao{
 		IDUsuario:    u.ID,
 		NomeCompleto: u.Nome,
@@ -324,15 +340,23 @@ func (s *servicoUsuarioRede) LoginPainel(email, senha string) (string, *modelos.
 	return token, sessao, nil
 }
 
-func (s *servicoUsuarioRede) LoginPainelNaRede(email, senha, idRede string) (string, *modelos.UsuarioSessao, error) {
-	email = strings.TrimSpace(email)
+func (s *servicoUsuarioRede) LoginPainelNaRede(identificador, senha, idRede string) (string, *modelos.UsuarioSessao, error) {
+	identificador = strings.TrimSpace(identificador)
 	senha = strings.TrimSpace(senha)
 	idRede = strings.TrimSpace(idRede)
-	if email == "" || senha == "" || idRede == "" {
+	if identificador == "" || senha == "" || idRede == "" {
 		return "", nil, ErrDadosInvalidos
 	}
 
-	u, err := s.repoUsuarios.BuscarPorEmailParaLoginPainelNaRede(idRede, email)
+	var (
+		u   *repositorios.UsuarioPainelLogin
+		err error
+	)
+	if utils.IdentificadorPareceEmail(identificador) {
+		u, err = s.repoUsuarios.BuscarPorEmailParaLoginPainelNaRede(idRede, identificador)
+	} else {
+		u, err = s.repoUsuarios.BuscarPorUsuarioClienteNaRede(idRede, identificador)
+	}
 	if err != nil {
 		if errors.Is(err, repositorios.ErrUsuarioPainelLoginNaoEncontrado) {
 			return "", nil, ErrCredenciais
@@ -407,21 +431,21 @@ func (s *servicoUsuarioRede) LoginPainelPorCodigo(codigo, senha, idRede string) 
 
 func (s *servicoUsuarioRede) CadastrarClienteApp(in CadastroClienteAppInput) (string, *modelos.UsuarioSessao, error) {
 	in.IDRede = strings.TrimSpace(in.IDRede)
-	in.NomeCompleto = strings.TrimSpace(in.NomeCompleto)
-	in.Email = strings.TrimSpace(in.Email)
 	in.Senha = strings.TrimSpace(in.Senha)
 	in.ConfirmarSenha = strings.TrimSpace(in.ConfirmarSenha)
 	in.Telefone = strings.TrimSpace(in.Telefone)
-	in.CPF = utils.SomenteDigitosCPF(in.CPF)
 
-	if in.IDRede == "" || in.NomeCompleto == "" || in.Email == "" || in.Senha == "" {
+	candidato := strings.TrimSpace(in.Usuario)
+	if candidato == "" {
+		candidato = strings.TrimSpace(in.NomeCompleto)
+	}
+	usuario, errUsuario := utils.ValidarUsuarioCliente(candidato)
+	if errUsuario != nil {
+		return "", nil, fmt.Errorf("%w: %s", ErrDadosInvalidos, errUsuario.Error())
+	}
+
+	if in.IDRede == "" || in.Senha == "" {
 		return "", nil, ErrDadosInvalidos
-	}
-	if in.CPF == "" {
-		return "", nil, fmt.Errorf("%w: cpf e obrigatorio", ErrDadosInvalidos)
-	}
-	if !utils.ValidarCPF(in.CPF) {
-		return "", nil, fmt.Errorf("%w: cpf invalido", ErrDadosInvalidos)
 	}
 	if in.Senha != in.ConfirmarSenha {
 		return "", nil, fmt.Errorf("%w: senha e confirmar_senha devem ser iguais", ErrDadosInvalidos)
@@ -435,11 +459,11 @@ func (s *servicoUsuarioRede) CadastrarClienteApp(in CadastroClienteAppInput) (st
 
 	u, err := s.repoUsuarios.CriarClienteSelfCadastro(
 		in.IDRede,
-		in.NomeCompleto,
-		in.Email,
+		usuario,
+		"", // novos cadastros sem e-mail
 		utils.GerarHashSHA256(in.Senha),
 		in.Telefone,
-		in.CPF,
+		"", // sem CPF
 	)
 	if err != nil {
 		return "", nil, err
@@ -459,6 +483,28 @@ func (s *servicoUsuarioRede) CadastrarClienteApp(in CadastroClienteAppInput) (st
 	return token, sessao, nil
 }
 
+func (s *servicoUsuarioRede) UsuarioClienteDisponivel(idRede, usuario string) (bool, error) {
+	idRede = strings.TrimSpace(idRede)
+	u, err := utils.ValidarUsuarioCliente(usuario)
+	if err != nil {
+		return false, fmt.Errorf("%w: %s", ErrDadosInvalidos, err.Error())
+	}
+	if idRede == "" {
+		return false, ErrDadosInvalidos
+	}
+	if _, err := s.repoRede.BuscarPorID(idRede); err != nil {
+		return false, err
+	}
+	_, err = s.repoUsuarios.BuscarPorUsuarioClienteNaRede(idRede, u)
+	if errors.Is(err, repositorios.ErrUsuarioPainelLoginNaoEncontrado) {
+		return true, nil
+	}
+	if err != nil {
+		return false, err
+	}
+	return false, nil
+}
+
 func (s *servicoUsuarioRede) ExcluirContaClienteApp(idUsuario, idRede string) error {
 	idUsuario = strings.TrimSpace(idUsuario)
 	idRede = strings.TrimSpace(idRede)
@@ -470,6 +516,23 @@ func (s *servicoUsuarioRede) ExcluirContaClienteApp(idUsuario, idRede string) er
 
 func (s *servicoUsuarioRede) EmailECPFPorUsuarioRede(idUsuario, idRede string) (email string, cpf string, err error) {
 	return s.repoUsuarios.EmailECPFPorUsuarioRede(idUsuario, idRede)
+}
+
+func (s *servicoUsuarioRede) AtualizarEmailCpfClienteApp(idUsuario, idRede, email, cpf string) error {
+	idUsuario = strings.TrimSpace(idUsuario)
+	idRede = strings.TrimSpace(idRede)
+	email = strings.ToLower(strings.TrimSpace(email))
+	cpf = utils.SomenteDigitosCPF(cpf)
+	if idUsuario == "" || idRede == "" {
+		return ErrDadosInvalidos
+	}
+	if email == "" || !strings.Contains(email, "@") || !strings.Contains(email, ".") {
+		return fmt.Errorf("%w: e-mail invalido", ErrDadosInvalidos)
+	}
+	if !utils.ValidarCPF(cpf) {
+		return fmt.Errorf("%w: cpf invalido", ErrDadosInvalidos)
+	}
+	return s.repoUsuarios.AtualizarEmailCpfClienteApp(idUsuario, idRede, email, cpf)
 }
 
 func (s *servicoUsuarioRede) ObterNivelCliente(idUsuario, idRede string) (string, error) {
