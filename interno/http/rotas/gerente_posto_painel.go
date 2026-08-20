@@ -25,6 +25,7 @@ func RegistrarGerentePostoPainel(muxPrincipal *http.ServeMux, h *handlers.Handle
 	mux.Handle("/v1/gerente-posto/dev/premios/resgates/entregar", http.HandlerFunc(h.PostPremioResgateEntregar))
 	mux.Handle("/v1/gerente-posto/dev/premios/resgates/cancelar", http.HandlerFunc(h.PostPremioResgateCancelar))
 	mux.Handle("/v1/gerente-posto/dev/clientes/presenca-app", http.HandlerFunc(h.ListarClientesPresencaAppPainel))
+	mux.Handle("/v1/gerente-posto/dev/clientes/carteira", http.HandlerFunc(h.ListarClientesCarteiraPainel))
 	mux.Handle("/v1/gerente-posto/dev/usuarios-rede/listar", http.HandlerFunc(h.ListarUsuariosRedeGestor))
 	mux.Handle("/v1/gerente-posto/dev/usuarios-rede/criar-equipe", http.HandlerFunc(h.CriarUsuarioEquipeGestorRede))
 	mux.Handle("/v1/gerente-posto/dev/usuarios-rede/editar-equipe", http.HandlerFunc(h.EditarUsuarioEquipeGestorRede))

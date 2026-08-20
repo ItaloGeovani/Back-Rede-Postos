@@ -9,6 +9,7 @@ import (
 
 	"gaspass-servidor/interno/http/middlewares"
 	"gaspass-servidor/interno/modelos"
+	"gaspass-servidor/interno/repositorios"
 	"gaspass-servidor/interno/servicos"
 	"gaspass-servidor/utils"
 )
@@ -81,10 +82,79 @@ func (h *Handlers) ListarClientesPresencaAppPainel(w http.ResponseWriter, r *htt
 		return
 	}
 	utils.ResponderJSON(w, http.StatusOK, map[string]any{
-		"total_clientes":                  totalC,
-		"total_com_presenca_registrada":   totalP,
-		"limite":                          lim,
-		"minutos_online":                  minOn,
-		"itens":                           itens,
+		"total_clientes":                totalC,
+		"total_com_presenca_registrada": totalP,
+		"limite":                        lim,
+		"minutos_online":                minOn,
+		"itens":                         itens,
+	})
+}
+
+// ListarClientesCarteiraPainel GET /v1/.../clientes/carteira — ranking de clientes por saldo da moeda.
+func (h *Handlers) ListarClientesCarteiraPainel(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		utils.ResponderErro(w, http.StatusMethodNotAllowed, "metodo nao permitido")
+		return
+	}
+
+	idRede := ""
+	u := middlewares.Usuario(r.Context())
+	if u != nil && (u.Papel == modelos.PapelGestorRede || u.Papel == modelos.PapelGerentePosto) {
+		var ok bool
+		idRede, ok = h.idRedeDaSessao(w, r)
+		if !ok {
+			return
+		}
+	} else {
+		// Super-admin: id_rede obrigatório na query.
+		idRede = strings.TrimSpace(r.URL.Query().Get("id_rede"))
+		if idRede == "" {
+			utils.ResponderErro(w, http.StatusBadRequest, "informe id_rede")
+			return
+		}
+	}
+
+	lim := 50
+	if v := strings.TrimSpace(r.URL.Query().Get("limite")); v != "" {
+		if n, err := strconv.Atoi(v); err == nil {
+			lim = n
+		}
+	}
+	off := 0
+	if v := strings.TrimSpace(r.URL.Query().Get("offset")); v != "" {
+		if n, err := strconv.Atoi(v); err == nil {
+			off = n
+		}
+	}
+	q := strings.TrimSpace(r.URL.Query().Get("q"))
+	ordenar := strings.TrimSpace(r.URL.Query().Get("ordenar"))
+	if ordenar == "" {
+		ordenar = "saldo_desc"
+	}
+
+	itens, total, moedaNome, err := h.usuarioRedeService.ListarClientesCarteiraRede(idRede, repositorios.ClienteCarteiraFiltro{
+		Limite:  lim,
+		Offset:  off,
+		Q:       q,
+		Ordenar: ordenar,
+	})
+	if err != nil {
+		switch {
+		case errors.Is(err, servicos.ErrDadosInvalidos):
+			utils.ResponderErroCliente(w, http.StatusBadRequest, err)
+		case errors.Is(err, repositorios.ErrRedeNaoEncontrada):
+			utils.ResponderErro(w, http.StatusNotFound, "Rede não encontrada.")
+		default:
+			utils.ResponderErro(w, http.StatusInternalServerError, "Não foi possível listar os clientes da carteira.")
+		}
+		return
+	}
+	utils.ResponderJSON(w, http.StatusOK, map[string]any{
+		"itens":              itens,
+		"total":              total,
+		"limite":             lim,
+		"offset":             off,
+		"ordenar":            ordenar,
+		"moeda_virtual_nome": moedaNome,
 	})
 }

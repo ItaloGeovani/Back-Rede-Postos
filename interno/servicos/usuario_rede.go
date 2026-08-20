@@ -53,6 +53,8 @@ type ServicoUsuarioRede interface {
 	RegistrarPresencaAppCliente(idUsuario, idRede, plataforma string) error
 	// ListarPresencaClientesRede clientes com dados cadastrais e ultimo app heartbeat (painel gestor/gerente).
 	ListarPresencaClientesRede(idRede string, limite, minutosOnline int) (totalClientes, totalComPresenca int, itens []repositorios.ClientePresencaAppItem, err error)
+	// ListarClientesCarteiraRede clientes com saldo da moeda, ultimo acesso e cliente desde.
+	ListarClientesCarteiraRede(idRede string, f repositorios.ClienteCarteiraFiltro) (itens []repositorios.ClienteCarteiraItem, total int, moedaNome string, err error)
 }
 
 // CriarUsuarioEquipeInput cadastro de gerente de posto ou frentista pelo admin global.
@@ -130,6 +132,7 @@ type usuarioRedePostgresRepo interface {
 	BuscarIdClientePorCodigoIndicacao(idRede, codigo string) (string, error)
 	RegistrarPresencaAppCliente(idUsuario, idRede, plataforma string) error
 	ListarClientesPresencaAppPorRede(idRede string, limite, minutosOnline int) (totalClientes, totalComPresenca int, itens []repositorios.ClientePresencaAppItem, err error)
+	ListarClientesCarteiraPorRede(idRede string, f repositorios.ClienteCarteiraFiltro) (itens []repositorios.ClienteCarteiraItem, total int, err error)
 }
 
 type servicoUsuarioRede struct {
@@ -600,4 +603,24 @@ func (s *servicoUsuarioRede) ListarPresencaClientesRede(idRede string, limite, m
 		return 0, 0, nil, ErrDadosInvalidos
 	}
 	return s.repoUsuarios.ListarClientesPresencaAppPorRede(idRede, limite, minutosOnline)
+}
+
+func (s *servicoUsuarioRede) ListarClientesCarteiraRede(idRede string, f repositorios.ClienteCarteiraFiltro) (itens []repositorios.ClienteCarteiraItem, total int, moedaNome string, err error) {
+	idRede = strings.TrimSpace(idRede)
+	if idRede == "" {
+		return nil, 0, "", ErrDadosInvalidos
+	}
+	rede, err := s.repoRede.BuscarPorID(idRede)
+	if err != nil {
+		return nil, 0, "", err
+	}
+	moedaNome = strings.TrimSpace(rede.MoedaVirtualNome)
+	itens, total, err = s.repoUsuarios.ListarClientesCarteiraPorRede(idRede, f)
+	if err != nil {
+		return nil, 0, "", err
+	}
+	if itens == nil {
+		itens = []repositorios.ClienteCarteiraItem{}
+	}
+	return itens, total, moedaNome, nil
 }

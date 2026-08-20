@@ -34,6 +34,29 @@ type ClientePresencaAppItem struct {
 	ProvavelmenteOnline bool       `json:"provavelmente_online_agora"`
 }
 
+// ClienteCarteiraItem cliente com saldo da moeda virtual e metadados para o painel.
+type ClienteCarteiraItem struct {
+	IDUsuario           string     `json:"id_usuario"`
+	NomeCompleto        string     `json:"nome_completo"`
+	Email               string     `json:"email"`
+	Telefone            string     `json:"telefone"`
+	CPF                 string     `json:"cpf"`
+	NivelCliente        string     `json:"nivel_cliente"`
+	Ativo               bool       `json:"ativo"`
+	SaldoToken          float64    `json:"saldo_token"`
+	UltimoAppAcessoEm   *time.Time `json:"ultimo_app_acesso_em,omitempty"`
+	UltimoAppPlataforma string     `json:"ultimo_app_plataforma,omitempty"`
+	ClienteDesde        *time.Time `json:"cliente_desde,omitempty"`
+}
+
+// ClienteCarteiraFiltro paginação/busca/ordenação da listagem de carteira.
+type ClienteCarteiraFiltro struct {
+	Limite  int
+	Offset  int
+	Q       string
+	Ordenar string // saldo_desc|saldo_asc|nome|acesso|desde
+}
+
 type usuarioRedePostgres struct {
 	db *sql.DB
 }
@@ -1176,6 +1199,134 @@ LIMIT $2`, idRede, limite)
 			}
 		}
 		it.UltimoAppPlataforma = plat
+		itens = append(itens, it)
+	}
+	err = rows.Err()
+	return
+}
+
+// ListarClientesCarteiraPorRede lista clientes com saldo da moeda (razão), presença e data de cadastro.
+func (r *usuarioRedePostgres) ListarClientesCarteiraPorRede(idRede string, f ClienteCarteiraFiltro) (itens []ClienteCarteiraItem, total int, err error) {
+	ctx, cancel := context.WithTimeout(context.Background(), 12*time.Second)
+	defer cancel()
+	idRede = strings.TrimSpace(idRede)
+	if idRede == "" {
+		err = errPresencaParamsInvalidos
+		return
+	}
+	limite := f.Limite
+	if limite < 1 {
+		limite = 50
+	}
+	if limite > 200 {
+		limite = 200
+	}
+	offset := f.Offset
+	if offset < 0 {
+		offset = 0
+	}
+	q := strings.TrimSpace(f.Q)
+	ordenar := strings.ToLower(strings.TrimSpace(f.Ordenar))
+	orderSQL := "saldo_token DESC, u.nome_completo ASC"
+	switch ordenar {
+	case "saldo_asc":
+		orderSQL = "saldo_token ASC, u.nome_completo ASC"
+	case "nome":
+		orderSQL = "u.nome_completo ASC"
+	case "acesso":
+		orderSQL = "u.ultimo_app_acesso_em DESC NULLS LAST, u.nome_completo ASC"
+	case "desde":
+		orderSQL = "u.criado_em DESC NULLS LAST, u.nome_completo ASC"
+	case "saldo_desc", "":
+		// default
+	default:
+		orderSQL = "saldo_token DESC, u.nome_completo ASC"
+	}
+
+	args := []any{idRede}
+	whereExtra := ""
+	if q != "" {
+		args = append(args, "%"+strings.ToLower(q)+"%")
+		whereExtra = `
+  AND (
+    lower(u.nome_completo) LIKE $2
+    OR lower(COALESCE(u.email, '')) LIKE $2
+    OR COALESCE(u.telefone, '') LIKE $2
+    OR COALESCE(u.cpf, '') LIKE $2
+  )`
+	}
+
+	countQ := `
+SELECT COUNT(*)
+FROM usuarios u
+WHERE u.rede_id = $1::uuid AND u.papel = 'cliente'::papel_usuario` + whereExtra
+	err = r.db.QueryRowContext(ctx, countQ, args...).Scan(&total)
+	if err != nil {
+		return
+	}
+
+	limIdx := len(args) + 1
+	offIdx := len(args) + 2
+	args = append(args, limite, offset)
+
+	listQ := fmt.Sprintf(`
+SELECT
+  u.id::text,
+  u.nome_completo,
+  COALESCE(u.email, ''),
+  COALESCE(u.telefone, ''),
+  COALESCE(u.cpf, ''),
+  COALESCE(NULLIF(TRIM(LOWER(u.nivel_cliente)), ''), 'bronze'),
+  u.ativo,
+  COALESCE((
+    SELECT SUM(t.valor_token * t.direcao)::float8
+    FROM carteiras c
+    LEFT JOIN transacoes_carteira t ON t.carteira_id = c.id AND t.rede_id = c.rede_id
+    WHERE c.rede_id = u.rede_id AND c.usuario_id = u.id
+  ), 0)::float8 AS saldo_token,
+  u.ultimo_app_acesso_em,
+  COALESCE(NULLIF(TRIM(LOWER(u.ultimo_app_plataforma)), ''), ''),
+  u.criado_em
+FROM usuarios u
+WHERE u.rede_id = $1::uuid AND u.papel = 'cliente'::papel_usuario%s
+ORDER BY %s
+LIMIT $%d OFFSET $%d`, whereExtra, orderSQL, limIdx, offIdx)
+
+	rows, err := r.db.QueryContext(ctx, listQ, args...)
+	if err != nil {
+		return
+	}
+	defer rows.Close()
+
+	itens = make([]ClienteCarteiraItem, 0)
+	for rows.Next() {
+		var it ClienteCarteiraItem
+		var tsAcesso, tsDesde sql.NullTime
+		var plat string
+		if err = rows.Scan(
+			&it.IDUsuario,
+			&it.NomeCompleto,
+			&it.Email,
+			&it.Telefone,
+			&it.CPF,
+			&it.NivelCliente,
+			&it.Ativo,
+			&it.SaldoToken,
+			&tsAcesso,
+			&plat,
+			&tsDesde,
+		); err != nil {
+			return
+		}
+		if tsAcesso.Valid {
+			t := tsAcesso.Time.UTC()
+			it.UltimoAppAcessoEm = &t
+		}
+		it.UltimoAppPlataforma = plat
+		if tsDesde.Valid {
+			t := tsDesde.Time.UTC()
+			it.ClienteDesde = &t
+		}
 		itens = append(itens, it)
 	}
 	err = rows.Err()

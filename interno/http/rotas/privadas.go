@@ -34,6 +34,7 @@ func RegistrarPrivadas(muxPrincipal *http.ServeMux, h *handlers.Handlers, aut se
 	muxPrivada.Handle("/v1/admin/redes/dev/push/diagnostico", http.HandlerFunc(h.GetPushDiagnosticoRedeAdmin))
 	muxPrivada.Handle("/v1/admin/sessoes/revogar-clientes", http.HandlerFunc(h.PostRevogarSessoesClientesAdmin))
 	muxPrivada.Handle("/v1/admin/usuarios-rede/dev/listar", http.HandlerFunc(h.ListarUsuariosRedeDev))
+	muxPrivada.Handle("/v1/admin/clientes/dev/carteira", http.HandlerFunc(h.ListarClientesCarteiraPainel))
 	muxPrivada.Handle("/v1/admin/usuarios-rede/dev/criar-equipe", http.HandlerFunc(h.CriarUsuarioEquipeRedeDev))
 	muxPrivada.Handle("/v1/admin/usuarios-rede/dev/editar-equipe", http.HandlerFunc(h.EditarUsuarioEquipeRedeDev))
 	muxPrivada.Handle("/v1/admin/postos/dev/listar", http.HandlerFunc(h.ListarPostosRedeDev))
