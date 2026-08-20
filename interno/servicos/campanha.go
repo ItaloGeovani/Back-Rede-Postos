@@ -241,26 +241,58 @@ func dedupIDsCombustiveis(ids []string) []string {
 	return out
 }
 
-func (s *servicoCampanha) validarCombustiveisAtivosNaRede(idRede string, ids []string) error {
+func (s *servicoCampanha) validarCombustiveisAtivosNaRede(idRede, idPosto string, ids []string) error {
 	if len(ids) == 0 {
 		return ErrDadosInvalidos
 	}
-	todos, err := s.repoComb.ListarPorRede(idRede)
+	todos, err := s.repoComb.ListarPorRede(idRede, "")
 	if err != nil {
 		return err
 	}
-	ativos := make(map[string]struct{}, len(todos))
+	ativos := make(map[string]*repositorios.CombustivelRedeRegistro, len(todos))
 	for _, c := range todos {
 		if c != nil && c.Ativo {
-			ativos[c.ID] = struct{}{}
+			ativos[c.ID] = c
 		}
 	}
+	idPosto = strings.TrimSpace(idPosto)
 	for _, id := range ids {
-		if _, ok := ativos[id]; !ok {
+		c, ok := ativos[id]
+		if !ok {
+			return ErrDadosInvalidos
+		}
+		if idPosto != "" && strings.TrimSpace(c.PostoID) != idPosto {
 			return ErrDadosInvalidos
 		}
 	}
 	return nil
+}
+
+// expandirCombustiveisCampanha: escopo rede expande por código/nome em todos os postos;
+// escopo posto mantém só os IDs (já validados do posto).
+func (s *servicoCampanha) expandirCombustiveisCampanha(idRede, idPosto string, ids []string) ([]string, error) {
+	ids = dedupIDsCombustiveis(ids)
+	if len(ids) == 0 {
+		return nil, ErrDadosInvalidos
+	}
+	idPosto = strings.TrimSpace(idPosto)
+	if idPosto != "" {
+		if err := s.validarCombustiveisAtivosNaRede(idRede, idPosto, ids); err != nil {
+			return nil, err
+		}
+		return ids, nil
+	}
+	if err := s.validarCombustiveisAtivosNaRede(idRede, "", ids); err != nil {
+		return nil, err
+	}
+	exp, err := s.repoComb.ExpandirIDsMesmoTipo(idRede, ids)
+	if err != nil {
+		return nil, err
+	}
+	if len(exp) == 0 {
+		return nil, ErrDadosInvalidos
+	}
+	return dedupIDsCombustiveis(exp), nil
 }
 
 func (s *servicoCampanha) Criar(sessaoCriador string, in CriarCampanhaInput) (*modelos.Campanha, error) {
@@ -292,9 +324,6 @@ func (s *servicoCampanha) Criar(sessaoCriador string, in CriarCampanhaInput) (*m
 		}
 		if *in.LitrosMin <= 0 || *in.LitrosMax < *in.LitrosMin {
 			return nil, ErrDadosInvalidos
-		}
-		if err := s.validarCombustiveisAtivosNaRede(in.IDRede, idsComb); err != nil {
-			return nil, err
 		}
 		litMinPtr = in.LitrosMin
 		litMaxPtr = in.LitrosMax
@@ -347,6 +376,14 @@ func (s *servicoCampanha) Criar(sessaoCriador string, in CriarCampanhaInput) (*m
 		if !ok {
 			return nil, repositorios.ErrPostoNaoPertenceARede
 		}
+	}
+
+	if base == modelos.BaseDescontoLitro {
+		exp, err := s.expandirCombustiveisCampanha(in.IDRede, in.IDPosto, idsComb)
+		if err != nil {
+			return nil, err
+		}
+		idsComb = exp
 	}
 
 	c := &modelos.Campanha{
@@ -409,9 +446,6 @@ func (s *servicoCampanha) Atualizar(in AtualizarCampanhaInput) error {
 		if *in.LitrosMin <= 0 || *in.LitrosMax < *in.LitrosMin {
 			return ErrDadosInvalidos
 		}
-		if err := s.validarCombustiveisAtivosNaRede(in.IDRede, idsComb); err != nil {
-			return err
-		}
 		litMinPtr = in.LitrosMin
 		litMaxPtr = in.LitrosMax
 	} else {
@@ -463,6 +497,14 @@ func (s *servicoCampanha) Atualizar(in AtualizarCampanhaInput) error {
 		if !ok {
 			return repositorios.ErrPostoNaoPertenceARede
 		}
+	}
+
+	if base == modelos.BaseDescontoLitro {
+		exp, err := s.expandirCombustiveisCampanha(in.IDRede, in.IDPosto, idsComb)
+		if err != nil {
+			return err
+		}
+		idsComb = exp
 	}
 
 	c := &modelos.Campanha{

@@ -94,6 +94,49 @@ func (h *Handlers) VerificarVersaoAppMobile(w http.ResponseWriter, r *http.Reque
 	utils.ResponderJSON(w, http.StatusOK, out)
 }
 
+// PublicAppLojas GET /v1/public/app-lojas?id_rede= — URLs das lojas (iOS e Android) para landing.
+func (h *Handlers) PublicAppLojas(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		utils.ResponderErro(w, http.StatusMethodNotAllowed, "metodo nao permitido")
+		return
+	}
+	idRedeQ := strings.TrimSpace(r.URL.Query().Get("id_rede"))
+	if idRedeQ == "" {
+		utils.ResponderErro(w, http.StatusBadRequest, "informe id_rede")
+		return
+	}
+	if _, e := uuid.Parse(idRedeQ); e != nil {
+		utils.ResponderErro(w, http.StatusBadRequest, "id_rede invalido")
+		return
+	}
+
+	var cfg *modelos.ConfiguracaoAppMobile
+	var err error
+	cfg, ok, err := h.appMobileRedeRepo.Obter(idRedeQ)
+	if err != nil {
+		log.Printf("public app-lojas rede: %v", err)
+		utils.ResponderErro(w, http.StatusInternalServerError, "falha ao carregar configuracao")
+		return
+	}
+	if !ok || cfg == nil {
+		cfg, err = h.appMobileRepo.Obter()
+		if err != nil {
+			log.Printf("public app-lojas global: %v", err)
+			utils.ResponderErro(w, http.StatusInternalServerError, "falha ao carregar configuracao")
+			return
+		}
+	}
+	if cfg == nil {
+		cfg = &modelos.ConfiguracaoAppMobile{}
+	}
+
+	utils.ResponderJSON(w, http.StatusOK, map[string]any{
+		"id_rede":          idRedeQ,
+		"url_loja_ios":     strings.TrimSpace(cfg.URLLojaIOS),
+		"url_loja_android": strings.TrimSpace(cfg.URLLojaAndroid),
+	})
+}
+
 // AppMobileVersaoAdmin GET le / PUT salva configuracao dos apps (super admin).
 func (h *Handlers) AppMobileVersaoAdmin(w http.ResponseWriter, r *http.Request) {
 	switch r.Method {

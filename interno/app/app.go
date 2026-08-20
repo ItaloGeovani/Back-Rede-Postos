@@ -243,6 +243,30 @@ func Nova() (*Aplicacao, error) {
 		log.Printf("releases: pasta nao encontrada (RELEASES_DIR ou ./releases)")
 	}
 
+	landingDir := estatico.ResolverDirLanding()
+	if landingDir != "" {
+		log.Printf("landing indique: %s (GET /indique , /landing/)", landingDir)
+		indiqueIndex := filepath.Join(landingDir, "indique", "index.html")
+		muxPrincipal.Handle("/indique", middlewares.Encadear(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if r.Method != http.MethodGet && r.Method != http.MethodHead {
+				http.Error(w, "metodo nao permitido", http.StatusMethodNotAllowed)
+				return
+			}
+			http.ServeFile(w, r, indiqueIndex)
+		}), mwGlobal...))
+		muxPrincipal.Handle("/indique/", middlewares.Encadear(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if r.Method != http.MethodGet && r.Method != http.MethodHead {
+				http.Error(w, "metodo nao permitido", http.StatusMethodNotAllowed)
+				return
+			}
+			http.ServeFile(w, r, indiqueIndex)
+		}), mwGlobal...))
+		landingFS := http.StripPrefix("/landing/", http.FileServer(http.Dir(landingDir)))
+		muxPrincipal.Handle("/landing/", middlewares.Encadear(landingFS, mwGlobal...))
+	} else {
+		log.Printf("landing: pasta nao encontrada (./landing/indique/index.html)")
+	}
+
 	raizPainel := estatico.EncontrarRaizPainel(cfg.PastaPainelWeb)
 	if raizPainel != "" {
 		log.Printf("painel web estatico: %s (GET /)", raizPainel)

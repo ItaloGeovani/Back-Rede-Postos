@@ -3,6 +3,7 @@ package handlers
 import (
 	"encoding/json"
 	"errors"
+	"log"
 	"net/http"
 	"strconv"
 	"strings"
@@ -78,8 +79,12 @@ func (h *Handlers) ListarClientesPresencaAppPainel(w http.ResponseWriter, r *htt
 			utils.ResponderErro(w, http.StatusBadRequest, err.Error())
 			return
 		}
-		utils.ResponderErro(w, http.StatusInternalServerError, "falha ao listar presenca")
+		log.Printf("presenca-app listar: rede=%s err=%v", idRede, err)
+		utils.ResponderErro(w, http.StatusInternalServerError, "Não foi possível listar a presença dos clientes.")
 		return
+	}
+	if itens == nil {
+		itens = []repositorios.ClientePresencaAppItem{}
 	}
 	utils.ResponderJSON(w, http.StatusOK, map[string]any{
 		"total_clientes":                totalC,

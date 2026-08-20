@@ -31,16 +31,17 @@ func (h *Handlers) PostVoucherCompraCalcular(w http.ResponseWriter, r *http.Requ
 		return
 	}
 	var body struct {
-		Valor                 float64  `json:"valor"`
-		IDCampanha            *string  `json:"id_campanha"`
-		IDCombustivelRede     *string  `json:"id_combustivel_rede"`
-		Litros                *float64 `json:"litros"`
+		Valor             float64  `json:"valor"`
+		IDCampanha        *string  `json:"id_campanha"`
+		IDCombustivelRede *string  `json:"id_combustivel_rede"`
+		Litros            *float64 `json:"litros"`
+		IDPosto           string   `json:"id_posto"`
 	}
 	if err := json.NewDecoder(io.LimitReader(r.Body, 1<<16)).Decode(&body); err != nil {
 		utils.ResponderErro(w, http.StatusBadRequest, "json invalido")
 		return
 	}
-	out, err := h.voucherCompraSvc.Calcular(u.IDRede, body.Valor, body.IDCampanha, time.Now(), body.IDCombustivelRede, body.Litros)
+	out, err := h.voucherCompraSvc.Calcular(u.IDRede, body.Valor, body.IDCampanha, time.Now(), body.IDCombustivelRede, body.Litros, body.IDPosto)
 	if err != nil {
 		if errors.Is(err, servicos.ErrDadosInvalidos) {
 			utils.ResponderErro(w, http.StatusBadRequest, "informe um valor minimo de R$ 1,00 e verifique a campanha")

@@ -242,6 +242,7 @@ type ResultadoCalcularVoucher struct {
 
 // Calcular aplica regras de campanha (sem persistir).
 // Para campanha por litro: informe idCombustivelRede e litros; o valor da compra é obtido com preco_por_litro do cadastro.
+// idPosto, quando informado, exige que o combustível pertença a esse posto.
 func (s *ServicoVoucherCompra) Calcular(
 	idRede string,
 	valor float64,
@@ -249,10 +250,12 @@ func (s *ServicoVoucherCompra) Calcular(
 	agora time.Time,
 	idCombustivelRede *string,
 	litros *float64,
+	idPosto string,
 ) (*ResultadoCalcularVoucher, error) {
 	if strings.TrimSpace(idRede) == "" {
 		return nil, ErrDadosInvalidos
 	}
+	idPosto = strings.TrimSpace(idPosto)
 	if idCampanha == nil || strings.TrimSpace(*idCampanha) == "" {
 		// Sem campanha: compra por valor (R$) ou por litro (preço de tabela do combustível).
 		if idCombustivelRede != nil && strings.TrimSpace(*idCombustivelRede) != "" && litros != nil && *litros > 1e-9 {
@@ -262,6 +265,9 @@ func (s *ServicoVoucherCompra) Calcular(
 			idC := strings.TrimSpace(*idCombustivelRede)
 			comb, err := s.combustive.BuscarPorID(idC, idRede)
 			if err != nil || !comb.Ativo {
+				return nil, ErrVoucherCampanhaInvalida
+			}
+			if idPosto != "" && strings.TrimSpace(comb.PostoID) != idPosto {
 				return nil, ErrVoucherCampanhaInvalida
 			}
 			valorCompra := round2(comb.PrecoPorLitro * (*litros))
@@ -311,6 +317,9 @@ func (s *ServicoVoucherCompra) Calcular(
 		}
 		comb, err := s.combustive.BuscarPorID(idC, idRede)
 		if err != nil || !comb.Ativo {
+			return nil, ErrVoucherCampanhaInvalida
+		}
+		if idPosto != "" && strings.TrimSpace(comb.PostoID) != idPosto {
 			return nil, ErrVoucherCampanhaInvalida
 		}
 		valorCompra = round2(comb.PrecoPorLitro * (*litros))
@@ -472,7 +481,7 @@ func (s *ServicoVoucherCompra) PagarComPixInicia(ctx context.Context, idRede, id
 	if strings.TrimSpace(idRede) == "" || strings.TrimSpace(idUsuario) == "" {
 		return nil, nil, ErrDadosInvalidos
 	}
-	calc, err := s.Calcular(idRede, valor, idCampanha, agora, idCombustivelRede, litros)
+	calc, err := s.Calcular(idRede, valor, idCampanha, agora, idCombustivelRede, litros, idPosto)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -590,7 +599,7 @@ func (s *ServicoVoucherCompra) PagarComDinheiroInicia(idRede, idUsuario string, 
 	if strings.TrimSpace(idRede) == "" || strings.TrimSpace(idUsuario) == "" {
 		return nil, ErrDadosInvalidos
 	}
-	calc, err := s.Calcular(idRede, valor, idCampanha, agora, idCombustivelRede, litros)
+	calc, err := s.Calcular(idRede, valor, idCampanha, agora, idCombustivelRede, litros, idPosto)
 	if err != nil {
 		return nil, err
 	}

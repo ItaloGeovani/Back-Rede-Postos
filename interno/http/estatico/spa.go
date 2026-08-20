@@ -64,12 +64,20 @@ npm run build:deploy</pre>
 </body></html>`
 
 // ComSPAFallback encerra GET/HEAD nao-API com arquivos estaticos e index.html (rotas do React).
-// Rotas /saude, /v1/... e /releases/... seguem sempre para o handler da API (mux).
+// Rotas /saude, /v1/..., /releases/... e /indique|/landing/... seguem sempre para o mux da API.
 func ComSPAFallback(api http.Handler, staticRoot string) http.Handler {
+	bypass := func(path string) bool {
+		return path == "/saude" ||
+			strings.HasPrefix(path, "/v1/") ||
+			strings.HasPrefix(path, "/releases/") ||
+			path == "/indique" ||
+			strings.HasPrefix(path, "/indique/") ||
+			strings.HasPrefix(path, "/landing/")
+	}
 	if staticRoot == "" {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			path := r.URL.Path
-			if path == "/saude" || strings.HasPrefix(path, "/v1/") || strings.HasPrefix(path, "/releases/") {
+			if bypass(path) {
 				api.ServeHTTP(w, r)
 				return
 			}
@@ -89,7 +97,7 @@ func ComSPAFallback(api http.Handler, staticRoot string) http.Handler {
 	staticRoot = filepath.Clean(staticRoot)
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		path := r.URL.Path
-		if path == "/saude" || strings.HasPrefix(path, "/v1/") || strings.HasPrefix(path, "/releases/") {
+		if bypass(path) {
 			api.ServeHTTP(w, r)
 			return
 		}
@@ -140,6 +148,28 @@ func ResolverDirReleases(override string) string {
 	for _, dir := range candidatos {
 		fi, err := os.Stat(dir)
 		if err != nil || !fi.IsDir() {
+			continue
+		}
+		abs, err := filepath.Abs(dir)
+		if err != nil {
+			return dir
+		}
+		return abs
+	}
+	return ""
+}
+
+// ResolverDirLanding retorna o diretorio absoluto da pasta landing/ (HTML estático Indique e ganhe).
+func ResolverDirLanding() string {
+	candidatos := []string{
+		"landing",
+		"./landing",
+		filepath.Join("..", "landing"),
+	}
+	for _, dir := range candidatos {
+		idx := filepath.Join(dir, "indique", "index.html")
+		fi, err := os.Stat(idx)
+		if err != nil || fi.IsDir() {
 			continue
 		}
 		abs, err := filepath.Abs(dir)

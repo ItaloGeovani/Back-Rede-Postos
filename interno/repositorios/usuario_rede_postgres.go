@@ -1168,7 +1168,7 @@ WHERE rede_id = $1::uuid AND papel = 'cliente'::papel_usuario`, idRede).Scan(&to
 SELECT
   u.id::text,
   u.nome_completo,
-  u.email,
+  COALESCE(u.email, ''),
   COALESCE(u.telefone, ''),
   COALESCE(u.cpf, ''),
   COALESCE(NULLIF(TRIM(LOWER(u.nivel_cliente)), ''), 'bronze'),

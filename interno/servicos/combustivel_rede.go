@@ -6,7 +6,7 @@ import (
 	"gaspass-servidor/interno/repositorios"
 )
 
-// ServicoCombustivelRede catálogo de combustíveis e preço por litro (referência da rede).
+// ServicoCombustivelRede catálogo de combustíveis e preço por litro por posto.
 type ServicoCombustivelRede struct {
 	repo     repositorios.CombustivelRedeRepositorio
 	redeRepo repositorios.RedeRepositorio
@@ -20,6 +20,7 @@ func NovoServicoCombustivelRede(
 }
 
 type CriarCombustivelRedeInput struct {
+	IDPosto       string
 	Nome          string
 	Codigo        string
 	Descricao     string
@@ -38,20 +39,22 @@ type AtualizarCombustivelRedeInput struct {
 	Ativo         bool
 }
 
-func (s *ServicoCombustivelRede) Listar(idRede string) ([]*repositorios.CombustivelRedeRegistro, error) {
+func (s *ServicoCombustivelRede) Listar(idRede, idPosto string) ([]*repositorios.CombustivelRedeRegistro, error) {
 	idRede = strings.TrimSpace(idRede)
+	idPosto = strings.TrimSpace(idPosto)
 	if idRede == "" {
 		return nil, ErrDadosInvalidos
 	}
 	if _, err := s.redeRepo.BuscarPorID(idRede); err != nil {
 		return nil, err
 	}
-	return s.repo.ListarPorRede(idRede)
+	return s.repo.ListarPorRede(idRede, idPosto)
 }
 
 func (s *ServicoCombustivelRede) Criar(idRede string, in CriarCombustivelRedeInput) (*repositorios.CombustivelRedeRegistro, error) {
 	idRede = strings.TrimSpace(idRede)
-	if idRede == "" {
+	idPosto := strings.TrimSpace(in.IDPosto)
+	if idRede == "" || idPosto == "" {
 		return nil, ErrDadosInvalidos
 	}
 	nome := strings.TrimSpace(in.Nome)
@@ -66,6 +69,7 @@ func (s *ServicoCombustivelRede) Criar(idRede string, in CriarCombustivelRedeInp
 	}
 	reg := &repositorios.CombustivelRedeRegistro{
 		RedeID:        idRede,
+		PostoID:       idPosto,
 		Nome:          nome,
 		Codigo:        strings.TrimSpace(in.Codigo),
 		Descricao:     strings.TrimSpace(in.Descricao),
@@ -74,9 +78,6 @@ func (s *ServicoCombustivelRede) Criar(idRede string, in CriarCombustivelRedeInp
 		Ordem:         in.Ordem,
 	}
 	if err := s.repo.Criar(reg); err != nil {
-		if strings.Contains(err.Error(), "ja existe") {
-			return nil, err
-		}
 		return nil, err
 	}
 	return reg, nil
@@ -113,4 +114,22 @@ func (s *ServicoCombustivelRede) Excluir(idCombustivel, idRede string) error {
 		return ErrDadosInvalidos
 	}
 	return s.repo.Excluir(idCombustivel, idRede)
+}
+
+// BuscarPorID retorna o combustível se pertencer à rede (e opcionalmente ao posto).
+func (s *ServicoCombustivelRede) BuscarPorID(id, idRede, idPosto string) (*repositorios.CombustivelRedeRegistro, error) {
+	id = strings.TrimSpace(id)
+	idRede = strings.TrimSpace(idRede)
+	idPosto = strings.TrimSpace(idPosto)
+	if id == "" || idRede == "" {
+		return nil, ErrDadosInvalidos
+	}
+	reg, err := s.repo.BuscarPorID(id, idRede)
+	if err != nil {
+		return nil, err
+	}
+	if idPosto != "" && strings.TrimSpace(reg.PostoID) != idPosto {
+		return nil, repositorios.ErrCombustivelRedeNaoEncontrado
+	}
+	return reg, nil
 }

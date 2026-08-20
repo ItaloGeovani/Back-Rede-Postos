@@ -42,7 +42,7 @@ func (s *ServicoVoucherCompra) PagarComMoedaInicia(
 		return nil, nil, errors.New("informe valor_moeda_fiat maior que zero")
 	}
 
-	calc, err := s.Calcular(idRede, valor, nil, agora, idCombustivelRede, litros)
+	calc, err := s.Calcular(idRede, valor, nil, agora, idCombustivelRede, litros, idPosto)
 	if err != nil {
 		return nil, nil, err
 	}

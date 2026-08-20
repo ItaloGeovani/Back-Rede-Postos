@@ -16,6 +16,7 @@ func RegistrarPublicas(mux *http.ServeMux, h *handlers.Handlers, mws ...middlewa
 	mux.Handle("/v1/gestor-rede/dev/login", middlewares.Encadear(http.HandlerFunc(h.LoginGestorRedeDev), mws...))
 	mux.Handle("/v1/usuario-rede/dev/login", middlewares.Encadear(http.HandlerFunc(h.LoginUsuarioRedePainelDev), mws...))
 	mux.Handle("/v1/app/versao", middlewares.Encadear(http.HandlerFunc(h.VerificarVersaoAppMobile), mws...))
+	mux.Handle("/v1/public/app-lojas", middlewares.Encadear(http.HandlerFunc(h.PublicAppLojas), mws...))
 	mux.Handle("/v1/public/rede-cards", middlewares.Encadear(http.HandlerFunc(h.PublicListarAppCardsRede), mws...))
 	mux.Handle("/v1/public/rede-info", middlewares.Encadear(http.HandlerFunc(h.PublicRedeInfo), mws...))
 	mux.Handle("/v1/public/premios", middlewares.Encadear(http.HandlerFunc(h.PublicListarPremios), mws...))
